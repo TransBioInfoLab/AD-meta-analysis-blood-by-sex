@@ -1,0 +1,453 @@
+---
+title: "AIBL dataset FEMALE - DMR analysis"
+author: "Tiago C. Silva, Lanyu Zhang, Lily Wang"
+date: "`r Sys.Date()`"
+output:
+  rmarkdown::html_document:
+    highlight: breezedark
+    theme: lumen
+    toc: true
+    number_sections: true
+    df_print: paged
+    code_download: false
+    toc_float:
+      collapsed: yes
+    toc_depth: 3
+editor_options:
+  chunk_output_type: inline    
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,warning = FALSE)
+```
+
+# Setup
+
+```{R, message = FALSE, results = 'hide'}
+library(dplyr)
+library(SummarizedExperiment)
+library(GenomicRanges)
+library(ExperimentHub)
+library(tidyr)
+library(coMethDMR)
+cohort <- "AIBL"
+dir.base <- "~/TBL Dropbox/Tiago Silva/AD-meta-analysis-blood-samples/"
+dir.data <- file.path(dir.base,"datasets/",cohort,"/") 
+dir.data.aux <- file.path(dir.data,"/Aux/") 
+dir.data.raw <- file.path(dir.data,"/step1_download/") 
+dir.data.processed <- file.path(dir.data,"/GSE153712_processed/") 
+dir.data.pca <- file.path(dir.data,"/pca_filtering/") 
+dir.results.single.cpg <- file.path(dir.base,"analysis_results",cohort,"single_cpg")
+dir.results.dmr <- file.path("~/TBL Dropbox/Tiago Silva/AD-meta-analysis-blood-samples-bySex/analysis_results/AIBL/DMR/")
+dir.data.dmr <- file.path(dir.data,"/dmr/") 
+for(p in grep("dir",ls(),value = T)) dir.create(get(p),recursive = TRUE,showWarnings = FALSE)
+```
+
+# Find co-methylated clusters
+```{R, eval = FALSE}
+probes.cluster.gene <- readRDS(
+  "~/TBL Dropbox/Tiago Silva/AD-meta-analysis-blood-samples-bySex/datasets/coMethDMR_data-main/data/EPIC_Gene_3_200.rds"
+)
+probes.cluster.intergene <- readRDS(
+  "~/TBL Dropbox/Tiago Silva/AD-meta-analysis-blood-samples-bySex/datasets/coMethDMR_data-main/data/EPIC_InterGene_3_200.rds"
+)
+probes.cluster.all <- c(
+  probes.cluster.gene, probes.cluster.intergene
+)
+
+probes.cluster.all <- probes.cluster.all[!duplicated(names(probes.cluster.all))]
+aibl.se.with.sex <- get(load(
+  file.path(dir.data.processed, "AIBL_se_age_at_least_65_with_XY.rda")
+))
+
+aibl.se.with.sex <- aibl.se.with.sex[rownames(aibl.se.with.sex) %in% unique(unlist(probes.cluster.all)),]
+aibl.se.with.sex <- aibl.se.with.sex[,aibl.se.with.sex$`disease status:ch1` %in% c("healthy control","Alzheimer's disease")]
+
+se.female <- aibl.se.with.sex[,aibl.se.with.sex$Sex == "F"]
+rm(aibl.se.with.sex)
+gc()
+```
+
+```{R, eval = FALSE}
+coMeth_ls.female <- CoMethAllRegions(
+  dnam = assay(se.female),      
+  betaToM = TRUE,                   
+  CpGs_ls = probes.cluster.all,
+  arrayType = "EPIC",
+  rDropThresh_num = 0.4,
+  method = "spearman",             
+  returnAllCpGs = FALSE,              
+  output = "CpGs",
+  nCores_int = 1,
+  progressbar = TRUE
+)
+save(coMeth_ls.female,probes.cluster.all,file = file.path(dir.data.dmr,"FemalecoMeth_ls.rda"))
+
+```
+
+# Take the median beta-values 
+
+```{R, eval = FALSE}
+load(file.path(dir.data.dmr,"FemalecoMeth_ls.rda"))
+pheno <- data.frame(colData (se.female))
+pheno <- pheno %>% as.data.frame %>% dplyr::select(
+  c(disease.status.ch1, sample, Sex, age.pred.Elastic_Net, PLATE,
+    B, NK,   CD4T, CD8T,   Mono, Neutro, Eosino
+  )
+)
+
+pheno$DIAGNOSIS <- factor(
+  pheno$disease.status.ch1, 
+  levels = c("healthy control", "Mild Cognitive Impairment", "Alzheimer's disease")
+)
+pheno$DIAGNOSIS_merged <- ifelse(pheno$DIAGNOSIS == "healthy control", 0, 1)
+pheno$DIAGNOSIS_merged <- factor(pheno$DIAGNOSIS_merged, levels = c(0, 1))
+
+### Take median of probes in each cluster for each sample
+filename <-  file.path(dir.data.dmr,"medianBeta_and_pheno_female.rda")
+beta_mat <- assay(se.female) %>% as.matrix()
+beta_mat <- beta_mat[rownames(beta_mat) %in% unlist(probes.cluster.all),]
+
+if(!file.exists(filename)){
+  medianBetaVal.df <- plyr::ldply(
+    probes.cluster.all,
+    function(probes){
+      colMedians(beta_mat[rownames(beta_mat) %in% as.character(probes),,drop = FALSE], na.rm = TRUE)
+    },
+    .progress = "time"
+  )
+  medianBetaVal.df$.id <- NULL
+  colnames(medianBetaVal.df) <- colnames(beta_mat)
+  rownames(medianBetaVal.df) <- names(probes.cluster.all)
+  medianBetaVal.df <- medianBetaVal.df[rowSums(is.na(medianBetaVal.df)) < ncol(medianBetaVal.df),]
+  save(medianBetaVal.df,pheno, file = filename)
+} else {
+  load(filename)
+}
+```
+
+# Logistic regression model
+
+```{R, eval = FALSE}
+library(SummarizedExperiment)
+library(dplyr)
+library(tidyr)
+library(lmerTest)
+
+results <- plyr::adply(medianBetaVal.df,.margins = 1, function(region.signal){
+  region.signal <- region.signal %>% t %>% as.data.frame() 
+  colnames(region.signal) <- "median.beta"
+  region.signal$barcodes <- rownames(region.signal)
+  pheno$barcodes <- rownames(pheno)
+  dat <- dplyr::full_join(region.signal, pheno)
+  formula <- paste0(
+    "DIAGNOSIS ~ ",
+    paste(
+      "median.beta",
+      "age.pred.Elastic_Net",
+      "as.factor(PLATE)",
+      "B",
+      "NK",
+      "CD4T",
+      "CD8T",
+      "Mono",
+      "Neutro",
+      sep = " + "
+    )
+  )
+  
+  ################### AD vs. CN --------------------------------------------
+  longDat.ad.cn <- subset(dat, disease.status.ch1 %in% c("healthy control","Alzheimer's disease"))
+  longDat.ad.cn$DIAGNOSIS <- droplevels(longDat.ad.cn$DIAGNOSIS)
+  f <- glm(
+    formula = formula, 
+    data = longDat.ad.cn, 
+    family = binomial
+  )
+  lmer_ad_cn <- coef(summary(f)) [grep("beta",rownames(coef(summary(f)) ),value = TRUE),]
+  lmer_ad_cn <- lmer_ad_cn %>% t %>% as.data.frame
+  lmer_ad_cn$analysis <- "AD vs CN"
+  
+  return(lmer_ad_cn)
+}, .progress = "time", .parallel = FALSE,.expand = FALSE,.id = "region",.inform = T)
+results$region <- rownames(medianBetaVal.df)[results$region]
+readr::write_csv(results, file.path(dir.results.dmr,"FEMALE_DMR_results_all.csv"))
+```
+
+# Annotate results 
+
+```{R, eval = FALSE}
+results <- readr::read_csv(file.path(dir.results.dmr,"FEMALE_DMR_results_all.csv"))
+load(file.path(dir.data.dmr,"FemalecoMeth_ls.rda"))
+regions <- probes.cluster.all[!duplicated(names(probes.cluster.all))]
+regions.collapsed <- plyr::llply(regions,.fun =  function(x) paste(x,collapse = ";"),.progress = "time")
+results$probeInRegion <- regions.collapsed[match(results$region,names(regions.collapsed))] %>% unlist
+results$aux <- gsub("EPIC_Gene_3_200.|EPIC_InterGene_3_200.","",results$region)
+results <- results %>% separate(col = "aux",into = c("seqnames","start","end"),remove = TRUE)
+results$start <- as.numeric(results$start)
+results$end <- as.numeric(results$end)
+results.ad <- results[results$analysis == "AD vs CN",]
+
+
+
+make_granges_from_names <- function (names) 
+{
+  df <- names %>% data.frame %>% separate(col = ".", into = c("chr", 
+                                                              "start", "end")) 
+  df$max <- ifelse(df$start > df$end, df$start, df$end)
+  df$min <- ifelse(df$start < df$end, df$start, df$end)
+  df$start <- df$min
+  df$end <- df$max
+  
+  df %>% makeGRangesFromDataFrame()
+}
+input.gr <- names(probes.cluster.all) %>% make_granges_from_names()
+output.gr <- results.ad$region %>% make_granges_from_names()
+
+results.ad$inputRegion_chr <-  names(probes.cluster.all)[nearest(output.gr,input.gr)]
+
+```
+
+## Create GREAT annotation for comethylated regions
+```{R, eval = FALSE}
+library(rGREAT)
+load(file.path(dir.data.dmr,"FemalecoMeth_ls.rda"))
+regions.gr <- results$region %>% unique() %>%
+  as.data.frame %>% separate(col = ".",into = c("chr","start","end")) %>% 
+  makeGRangesFromDataFrame()
+
+regionsToGenes.list <- plyr::alply(seq(1,length(regions.gr),10000),.margins = 1,.fun = function(start){
+  end <- (start + 10000 - 1)
+  if(end > length(regions.gr)) end <- length(regions.gr)
+  job <- submitGreatJob(regions.gr[start:end], species = "hg19")
+  Sys.sleep(70)
+  data.frame(plotRegionGeneAssociationGraphs(job))
+},.progress = "time")
+regionsToGenes <- plyr::rbind.fill(regionsToGenes.list)
+
+regionsToGenes$GREAT_annotation <- ifelse(
+  regionsToGenes$distTSS > 0,
+  paste0(regionsToGenes$gene, " (+", regionsToGenes$distTSS, ")"),
+  paste0(regionsToGenes$gene, " (", regionsToGenes$distTSS, ")"))
+regionsToGenes <- regionsToGenes[
+  ,c("seqnames", "start", "end", "GREAT_annotation")
+]
+great <- regionsToGenes %>%
+  group_by(seqnames, start, end) %>%
+  mutate(GREAT_annotation = paste0(GREAT_annotation,collapse = ";")) %>% unique()
+save(great, file = file.path(dir.data.aux,"FEMALE_great_AIBL_coMethDMR_EPIC_array_annotation.rda"))
+```
+
+## Add annotation to input cpgs
+```{R, eval = FALSE}
+load(file.path(dir.data.aux,"FEMALE_great_AIBL_coMethDMR_EPIC_array_annotation.rda"))
+load(file.path(dir.data,"../Aux/E073_15_coreMarks_segments.rda"))
+
+add_annotation <- function(result){
+  
+  result$fdr <- p.adjust(result$`Pr(>|z|)`,method = "fdr")
+  message("Annotating E073_15_coreMarks_segments")
+  result.gr <- result %>% makeGRangesFromDataFrame(
+    start.field = "start",
+    end.field = "end",
+    seqnames.field = "seqnames"
+  )
+  hits <- findOverlaps(result.gr, ChmmModels.gr) %>% as.data.frame()
+  hits$state <- ChmmModels.gr$state[hits$subjectHits]
+  hits$region <- result$region[hits$queryHits]
+  result$E073_15_coreMarks_segments_state <- hits$state[match(result$region,hits$region)]
+  
+  message("Annotating GREAT")
+  
+  result <- dplyr::left_join(result, great,by = c("seqnames","start","end"))
+  
+  message("Annotating Island")
+  
+  result$chrom <- result$seqnames
+  result <- AnnotateResults(result, arrayType = "EPIC", nCores_int = 1)
+  result$chrom <-  result$chr <- NULL
+  result <- result[order(result$`Pr(>|z|)`),]
+  return(result)
+  
+}
+results.ad.annotated <-  results.ad %>% add_annotation
+
+
+
+readr::write_csv(
+  results.ad.annotated  %>% as.data.frame(),
+  file =  file.path(dir.results.dmr,"FEMALE_DMR_glm_AD_vs_CN_results_annotated.csv")
+)
+
+results.ad.annotated.sig <- results.ad.annotated %>% filter(`Pr(>|z|)` < 0.05) 
+
+
+readr::write_csv(
+  results.ad.annotated.sig  %>% as.data.frame(),
+  file = file.path(dir.results.dmr, "FEMALE_DMR_glm_AD_vs_CN_results_annotated_pvalue_cut_off_0_05.csv")
+)
+
+```
+
+# Top 10 regions vs single probes
+
+## AD vs CN
+```{R}
+sinlge.cpg.ad.vs.cn <- readr::read_csv( 
+  file.path("~/TBL Dropbox/Tiago Silva/AD-meta-analysis-blood-samples-bySex/analysis_results/AIBL/single_cpg/Logistic_regression_model/FEMALE_AIBL_glm_diagnosis_vs_beta_and_covaritates_age_at_least_65_AD_vs_CN_results_annotated_with_inflation.csv"),
+  col_types = readr::cols()
+)
+
+results.ad.annotated.sig <- readr::read_csv(
+  file.path(dir.results.dmr, "FEMALE_DMR_glm_AD_vs_CN_results_annotated_pvalue_cut_off_0_05.csv"),
+  col_types = readr::cols()
+)
+top10 <- results.ad.annotated.sig[1:10,]
+```
+
+```{r loop_print, results = 'asis'}
+plyr::a_ply(top10,.margins = 1,.fun = function(x){
+  cpgs <- unlist(strsplit(x$probeInRegion,";"))
+  cat(paste0("\n### Region ",x$region,"\n"))
+  print(x  %>% gt::gt())
+  print(
+    sinlge.cpg.ad.vs.cn[sinlge.cpg.ad.vs.cn$cpg %in% cpgs,] %>% gt::gt() %>%
+      gt::tab_header(
+        title = paste0(x$.id)
+      )
+  )
+  
+})
+```
+
+```{R, include = FALSE}
+top10DMR_cpgs <- plyr::alply(top10,.margins = 1,.fun = function(x){
+  cpgs <- unlist(strsplit(x$probeInRegion,";"))
+  sinlge.cpg.ad.vs.cn[sinlge.cpg.ad.vs.cn$cpg %in% cpgs,]
+})
+names(top10DMR_cpgs) <- gsub(":|\\.|-","_",top10$region)
+
+writexl::write_xlsx(
+  x = c(list("top10_DMRs" = top10),top10DMR_cpgs),
+  path =   file.path(dir.results.dmr, "FEMALE_top10_DMR_AD_vs_CN_results_annotated_pvalue_cut_off_0_05.xlsx")
+)
+
+```
+
+
+# Calculate inflation factors and Bacon correction for final results
+
+## Auxiliary functions
+
+```{r inflation,message=FALSE,warning=FALSE}
+library(dplyr)
+library(bacon)
+library(GWASTools)
+estimation_of_inflation <- function(data){
+  ### 1. Compute genomic inflation factor before bacon adjustment
+  data$zvalue <- data$Estimate / data$`Std. Error`
+  #data$zvalue <- qnorm(pt(data$tvalue, df))
+  data$chisq <- (data$zvalue) ^ 2
+  # inflation factor - last term is median from chisq distrn with 1 df  
+  inflationFactor <- median(data$chisq,na.rm = TRUE) / qchisq(0.5, 1)
+  print("lambda")
+  print(inflationFactor)
+  # genome-wide sig cpgs
+  #sig <- ifelse(data$`Pr(>|t|)` < 2.4e-7, 1, 0)
+  # table(sig)  # 1 sig
+  ### 2. bacon analysis
+  bc <- bacon(
+    teststatistics = NULL,
+    effectsizes =  data$Estimate,
+    standarderrors = data$`Std. Error`,
+    na.exclude = TRUE
+  )
+  # inflation factor
+  print("lambda.bacon")
+  print(inflation(bc))
+  
+  ### 3. Create final dataset
+  data.with.inflation <- data.frame(
+    data,
+    Estimate.bacon = bacon::es(bc),
+    StdErr.bacon = bacon::se(bc),
+    pValue.bacon = pval(bc),
+    fdr.bacon = p.adjust(pval(bc), method = "fdr"),
+    stringsAsFactors = FALSE
+  )
+  
+  percent_null <- trunc ( estimates(bc)[1]*100, digits = 0)
+  percent_1  <- trunc ( estimates(bc)[2]*100, digits = 0 )
+  percent_2  <- 100 - percent_null - percent_1  
+  bc2 <- bacon(
+    teststatistics = NULL,
+    effectsizes =  data.with.inflation$Estimate.bacon,
+    standarderrors = data.with.inflation$StdErr.bacon,
+    na.exclude = TRUE, 
+    priors = list(
+      sigma = list(alpha = 1.28,  beta = 0.36), 
+      mu = list(lambda = c(0, 3, -3), tau = c(1000, 100, 100)), 
+      epsilon = list(gamma = c(percent_null, percent_1, percent_2)))
+  )
+  print("inflation")
+  print(inflation(bc2))
+  print("estimates")
+  print(estimates(bc2))
+  data.with.inflation <- data.with.inflation %>% dplyr::select(-c(zvalue, chisq))
+  return(
+    list(
+      "data.with.inflation" = data.with.inflation,
+      "inflationFactor" =   inflationFactor,
+      "estimatedInflation" = inflation(bc)
+    )
+  )
+}
+
+plot_inflation <- function(data, main){
+  qqPlot(
+    data$data.with.inflation$Pr...z.., ci = TRUE, 
+    main = paste0(main)
+  ) + text(
+    x = 0.5, 
+    y = -log10(min(data$data.with.inflation$Pr...z..)) - 0.5,
+    labels = bquote(lambda == .(format(data$inflationFactor,digits = 4))),
+    pos = 4
+  ) + text(
+    x = 0.5, 
+    y = -log10(min(data$data.with.inflation$Pr...z..)) - 1,
+    labels = bquote(lambda[bacon] == .(format(data$estimatedInflation,digits = 4))),
+    pos = 4
+  )
+}
+```
+
+## Logistic mixed model
+
+```{R}
+results.ad.annotated <- readr::read_csv(
+  col_types = readr::cols(),
+  file =  file.path(dir.results.dmr,"FEMALE_DMR_glm_AD_vs_CN_results_annotated.csv")
+)
+```
+
+
+```{R}
+results.ad.annotated.with.inflation <- estimation_of_inflation(data = results.ad.annotated)
+```
+
+```{R, eval = F}
+readr::write_csv(
+  x = results.ad.annotated.with.inflation$data.with.inflation,
+  file = file.path(dir.results.dmr,"FEMALE_DMR_glm_AD_vs_CN_results_annotated_with_inflation.csv")
+)
+
+```
+
+```{R}
+plot_inflation(results.ad.annotated.with.inflation, "FEMALE AIBL DMR GLMM - AD vs CN")
+```
+
+# Session information
+```{R}
+devtools::session_info()
+```
