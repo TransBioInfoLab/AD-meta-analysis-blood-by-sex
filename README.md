@@ -13,87 +13,47 @@ In this work, we performed a sex-specific meta-analysis of two large independent
 
 | File                 | Dataset | Link |
 |----------------------|-------------|-------------|
-| code/ADNI/ADNI_SAS.Rmd        |   ADNI  | [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood/blob/main/code/ADNI/ADNI_SAS.Rmd) |
-| code/ADNI/ADNI_DMR_analysis_SAS.Rmd        |   ADNI  | [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood/blob/main/code/ADNI/ADNI_DMR_analysis_SAS.Rmd) |
-|code/ADNI/GLMM_models_ADNIdata_all.sas|   ADNI  | [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood/blob/main/code/ADNI/GLMM_models_ADNIdata_all.sas)  |    
-| code/AIBL/AIBL.Rmd           |   AIBL    | [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood/blob/main/code/AIBL/AIBL.Rmd) |
-| code/AIBL/AIBL_DMR.Rmd           |   AIBL    | [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood/blob/main/code/AIBL/AIBL_DMR.Rmd) |
-| code/Matched_data_ADNI/matched_RNA_DNAm_data_and_residuals.R          |   ADNI    | [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood/blob/main/code/Matched_data_ADNI/matched_RNA_DNAm_data_and_residuals.R) |
-| code/Clinical/clinical_info.Rmd          |   ADNI & AIBL    | [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood/blob/main/code/Clinical/clinical_info.Rmd) |
+| ADNI/ADNI_SAS.Rmd        |   ADNI  | [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex-by-sex/blob/main/ADNI/ADNI_SAS.Rmd) |
+| ADNI/ADNI_DMR_analysis_SAS_FEMALE.Rmd        |   ADNI  | [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/ADNI/ADNI_DMR_analysis_SAS_bySex_FEMALE.Rmd) |
+| ADNI/ADNI_DMR_analysis_SAS_MALE.Rmd        |   ADNI  | [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/ADNI/ADNI_DMR_analysis_SAS_bySex_MALE.Rmd) |
+| AIBL/AIBL_bySex.Rmd           |   AIBL    | [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/AIBL/AIBL_bySex.Rmd) |
+| AIBL/AIBL_DMR_bySex_male.Rmd           |   AIBL    | [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/AIBL/AIBL_DMR_bySex_male.Rmd) |
+| AIBL/AIBL_DMR_bySex_female.Rmd           |   AIBL    | [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/AIBL/AIBL_DMR_bySex_female.Rmd) |
+| Matched_data_ADNI/matched_RNA_DNAm_data_and_residuals_bySex.R          |   ADNI    | [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/Matched_data_ADNI/matched_RNA_DNAm_data_and_residuals_bySex.R) |
+| Clinical/clinical_info.Rmd          |   ADNI & AIBL & addneuromed   | [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/Clinical/clinical_info.Rmd) |
+| Clinical/clinical_info_brain.Rmd          |  GASPARONI & LONDON & MtSinai & ROSMAP  | [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/Clinical/clinical_info_brain.Rmd) |
 
 
 ### 2. Blood samples meta-analysis
 
 | File                 | Link |
 |----------------------|-------------|
-| code/meta-analysis/meta-analysis-two-cohorts_glm.Rmd       |  [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood/blob/main/code/meta-analysis/meta-analysis-two-cohorts_glm.Rmd) |
-| code/meta-analysis/meta-analysis-two-cohorts_glm_DMR.Rmd      |  [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood/blob/main/code/meta-analysis/meta-analysis-two-cohorts_glm_DMR.Rmd) |
+| meta-analysis/meta-analysis-two-cohorts_glm_by_sex.Rmd      |  [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/meta-analysis/meta-analysis-two-cohorts_glm_by_sex.Rmd) |
+| meta-analysis/meta-analysis/meta-analysis-two-cohorts_glm_DMR_by_FEMALE.Rmd     |  [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/meta-analysis/meta-analysis-two-cohorts_glm_DMR_by_FEMALE.Rmd) |
+| meta-analysis/meta-analysis/meta-analysis-two-cohorts_glm_DMR_by_MALE.Rmd     |  [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/meta-analysis/meta-analysis-two-cohorts_glm_DMR_by_MALE.Rmd) |
 
  
 ### 3. Cross-tissue meta-analysis	
 
 | File                 | Link |
 |----------------------|-------------|
-| code/cross_tissue_meta_analysis/cross_tissue_meta_analysis.Rmd        |  [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood/blob/main/code/cross_tissue_meta_analysis/cross_tissue_meta_analysis.Rmd) |
-| code/cross_tissue_meta_analysis/cross_tissue_meta_analysis_DMR.Rmd        |  [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood/blob/main/code/cross_tissue_meta_analysis/cross_tissue_meta_analysis_DMR.Rmd) |
+| cross_tissue_meta_analysis/cross_tissue_meta_analysis_male.Rmd        |  [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/cross_tissue_meta_analysis/cross_tissue_meta_analysis_male.Rmd) |
+| cross_tissue_meta_analysis/cross_tissue_meta_analysis_DMR_male.Rmd        |  [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/cross_tissue_meta_analysis/cross_tissue_meta_analysis_DMR_male.Rmd) |
+| cross_tissue_meta_analysis/cross_tissue_meta_analysis_female.Rmd        |  [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/cross_tissue_meta_analysis/cross_tissue_meta_analysis_female.Rmd) |
+| cross_tissue_meta_analysis/cross_tissue_meta_analysis_DMR_female.Rmd        |  [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/cross_tissue_meta_analysis/cross_tissue_meta_analysis_DMR_female.Rmd) |
 
-
-### 4. Functional annotation of significant methylation differences
-
-| File                 | Link |
-|----------------------|-------------|
-| code/annotations/create_great_annotation.R     |  [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood/blob/main/code/annotations/create_great_annotation.R) |
-| code/annotations/annotate_enhancer.R    |  [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood/blob/main/code/annotations/annotate_enhancer.R) |
-
-### 5. Correlations between methylation levels of significant CpGs and DMRs in AD with expressions of nearby genes
+### 4. Correlations between methylation levels of significant CpGs and DMRs in AD with expressions of nearby genes
 
 | File                 | Link |
 |----------------------|-------------|
-| code/DNAm_vs_RNA/Blood_ADNI_RNA_vs_DMR.R      |  [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood/blob/main/code/DNAm_vs_RNA/Blood_ADNI_RNA_vs_DMR.R) |
-| code/DNAm_vs_RNA/Blood_ADNI_RNA_vs_cpg.R      |  [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood/blob/main/code/DNAm_vs_RNA/Blood_ADNI_RNA_vs_cpg.R) |
-| code/DNAm_vs_RNA/Brain_ROSMAP_RNA_vs_DMR.R      |  [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood/blob/main/code/DNAm_vs_RNA/Brain_ROSMAP_RNA_vs_DMR.R) |
-| code/DNAm_vs_RNA/Brain_ROSMAP_RNA_vs_cpg.R      |  [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood/blob/main/code/DNAm_vs_RNA/Brain_ROSMAP_RNA_vs_cpg.R) |
+| DNAm_vs_RNA/Blood_ADNI_RNA_vs_cpg_bySex.R      |  [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/DNAm_vs_RNA/Blood_ADNI_RNA_vs_cpg_bySex.R) |
+| DNAm_vs_RNA/Brain_ROSMAP_RNA_vs_cpg_bySex.R      |  [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/DNAm_vs_RNA/Brain_ROSMAP_RNA_vs_cpg_bySex.R) |
 
-
-### 6. MethReg integrative analysis
-
+### 5. Out-of-sample validations of AD-associated DNAm differences in an external cohort - Methylation_Risk_scores
 
 | File                 | Link |
 |----------------------|-------------|
-| code/MethReg/Blood_MethReg_DMR_cpg.R        |  [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood/blob/main/code/MethReg/Blood_MethReg_DMR_cpg.R) |
-| code/MethReg/Blood_MethReg_DMR_median.R        |  [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood/blob/main/code/MethReg/Blood_MethReg_DMR_median.R) |
-| code/MethReg/Blood_MethReg_cpg.R        |  [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood/blob/main/code/MethReg/Blood_MethReg_cpg.R) |
-| code/MethReg/Brain_MethReg_cpg.R        |  [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood/blob/main/code/MethReg/Brain_MethReg_cpg.R) |
-
-
-
-### 7. Integrative analysis of DNA methylation differences in the brain and blood with transcriptome-wide gene expressions
-
-| File                 | Link |
-|----------------------|-------------|
-| code/TWAS_pathway_analysis/TWAS_approach_blood.R        |  [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood/blob/main/code/TWAS_pathway_analysis/TWAS_approach_blood.R) |
-| code/TWAS_pathway_analysis/TWAS_approach_brain.R       |  [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood/blob/main/code/TWAS_pathway_analysis/TWAS_approach_brain.R) |
-| code/TWAS_pathway_analysis/jaccard_idx.R        |  [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood/blob/main/code/TWAS_pathway_analysis/jaccard_idx.R) |
-
-
-### 8. Correlation and overlap with genetic susceptibility loci
-
-| File                 | Link |
-|----------------------|-------------|
-| code/Overlap_with_AD_associated_genetics_loci/Overlap_with_AD_associated_genetics_loci.R       |  [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood/blob/main/code/Overlap_with_AD_associated_genetics_loci/Overlap_with_AD_associated_genetics_loci.R) |
-
-
-### 9. Correlation of AD-associated CpGs and DMRs methylation levels in blood and brain samples	
-
-| File                 | Link |
-|----------------------|-------------|
-| code/MethReg/Blood_MethReg_DMR_cpg.R        |  [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood/blob/main/code/MethReg/Blood_MethReg_DMR_cpg.R) |
-
-### 10. Out-of-sample validations of AD-associated DNAm differences in an external cohort
-
-| File                 | Link |
-|----------------------|-------------|
-| code/validation/out_of_sample_validation.Rmd        |  [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood/blob/main/code/validation/out_of_sample_validation.Rmd) |
+| Methylation_Risk_scores/Methylation_risk_scores_both.Rmd        |  [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/Methylation_Risk_scores/Methylation_risk_scores_both.Rmd ) |
 
 
 # For reproducible research
