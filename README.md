@@ -6,7 +6,7 @@ Tiago C. Silva, Juan I. Young,  Lissette Gomez, Michael A. Schmidt,  Xi Chen, Ed
 
 This github repository includes scripts used for the analyses in the above manuscript. 
 
-In this work, we performed a sex-specific meta-analysis of two large independent blood-based epigenome-wide association studies, the ADNI and AIBL studies, with a total of 1284 whole blood samples (633 female samples and 651 male samples). Furthermore, to identify blood-based DNA methylation markers that also change with underlying neuropathology in the brain, we next performed a cross-tissue meta-analysis by combining these blood DNA methylation datasets with four additional DNA methylation datasets, which included a total of  1,030 prefrontal cortex brain samples (642 female samples and 388 male samples). Our findings provide a useful resource for future biomarker studies in AD.  
+In this work, we performed a sex-specific meta-analysis of two large independent blood-based epigenome-wide association studies, the ADNI and AIBL studies (see references below), with a total of 1284 whole blood samples (633 female samples and 651 male samples). Furthermore, to identify blood-based DNA methylation markers that also change with underlying neuropathology in the brain, we next performed a cross-tissue meta-analysis by combining these blood DNA methylation datasets with four additional DNA methylation datasets, which included a total of  1,030 prefrontal cortex brain samples (642 female samples and 388 male samples). Our findings provide a useful resource for future biomarker studies in AD.  
 
 ### 1. Study cohorts, Preprocessing of DNA methylation data, Single Cohort analysis
 
