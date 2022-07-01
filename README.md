@@ -2,6 +2,9 @@
 
 Tiago C. Silva, Juan I. Young,  Lissette Gomez, Michael A. Schmidt,  Xi Chen, Eden R. Martin, Lily Wang
 
+# Citing this repository
+[![DOI](https://zenodo.org/badge/457491267.svg)](https://zenodo.org/badge/latestdoi/457491267)
+
 ### Description
 
 This github repository includes scripts used for the analyses in the above manuscript. 
