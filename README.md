@@ -38,11 +38,11 @@ In this work, we performed a sex-specific meta-analysis of two large independent
 
 #### 2.1 Blood samples meta-analysis results 
 
-| Result | File                 | Link |
-|---------|----------------------|-------------|
-|**Female**| MALE_meta_analysis_glm_fixed_effect_ADNI_and_AIBL_AD_vs_CN_single_cpg.csv     |  [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/results/MALE_meta_analysis_glm_fixed_effect_ADNI_and_AIBL_AD_vs_CN_single_cpg.csv) |
-|**Male**| FEMALE_meta_analysis_glm_fixed_effect_ADNI_and_AIBL_AD_vs_CN_single_cpg.csv     |  [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/results/FEMALE_meta_analysis_glm_fixed_effect_ADNI_and_AIBL_AD_vs_CN_single_cpg.csv) |
-|**INTERACTION**| meta_analysis_glm_fixed_effect_ADNI_and_AIBL_AD_vs_CN_interaction_single_cpg.csv     |  [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/results/meta_analysis_glm_fixed_effect_ADNI_and_AIBL_AD_vs_CN_interaction_single_cpg.csv) |
+| Result | File               | Link |
+|---------|--------------------|-------------|
+|Female| MALE_meta_analysis_glm_fixed_effect_ADNI_and_AIBL_AD_vs_CN_single_cpg.csv     |  [Link](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/results/MALE_meta_analysis_glm_fixed_effect_ADNI_and_AIBL_AD_vs_CN_single_cpg.csv) |
+|Male| FEMALE_meta_analysis_glm_fixed_effect_ADNI_and_AIBL_AD_vs_CN_single_cpg.csv     |  [Link](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/results/FEMALE_meta_analysis_glm_fixed_effect_ADNI_and_AIBL_AD_vs_CN_single_cpg.csv) |
+|Interaction| meta_analysis_glm_fixed_effect_ADNI_and_AIBL_AD_vs_CN_interaction_single_cpg.csv     |  [Link](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/results/meta_analysis_glm_fixed_effect_ADNI_and_AIBL_AD_vs_CN_interaction_single_cpg.csv) |
  
  
 ### 3. Cross-tissue meta-analysis	
@@ -56,9 +56,9 @@ In this work, we performed a sex-specific meta-analysis of two large independent
 
 #### 3.1 Cross-tissue meta-analysis	results
 
-| Result | File                 | Link |
-|---------|----------------------|-------------|
-|**Male**| MALE_cross_tissue_meta_analysis_glm_using_AD_vs_CN_single_cpg.csv     |  [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/results/MALE_cross_tissue_meta_analysis_glm_using_AD_vs_CN_single_cpg.csv) |
+| Result | File               | Link |
+|---------|--------------------|-------------|
+|Male| MALE_cross_tissue_meta_analysis_glm_using_AD_vs_CN_single_cpg.csv   |  [Link](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/results/MALE_cross_tissue_meta_analysis_glm_using_AD_vs_CN_single_cpg.csv) |
 
 ### 4. Correlations between methylation levels of significant CpGs and DMRs in AD with expressions of nearby genes
 
@@ -85,7 +85,8 @@ if (!requireNamespace("BiocManager", quietly = TRUE)){
 BiocManager::install(version = "3.14",ask = FALSE) # Install last version of Bioconductor
 
 list.of.packages <- c(
-  "bacon",                                        
+  "bacon",
+  "EpiSmokEr",
   "DMRcate",                                      
   "doParallel",                                   
   "dplyr",                                        
