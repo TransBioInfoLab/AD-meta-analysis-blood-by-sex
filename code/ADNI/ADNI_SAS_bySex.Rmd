@@ -1,0 +1,1353 @@
+---
+title: "Integrative meta-analysis of epigenome-wide association studies identifies genomic and epigenomics differences in the brain and the blood in Alzheimer’s disease - Stratified by Sex"
+subtitle: 'ADNI dataset'
+author:
+  - Tiago Chedraoui Silva^[University of Miami]
+  - Wei Zhang^[University of Miami]
+  - Lily Wang^[University of Miami]
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output:
+  rmarkdown::html_document:
+    highlight: breezedark
+    theme: lumen
+    toc: true
+    number_sections: true
+    df_print: paged
+    code_download: false
+    toc_float:
+      collapsed: yes
+    toc_depth: 3
+editor_options:
+  chunk_output_type: inline    
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,warning = FALSE)
+knitr::opts_knit$set(root.dir = "./../../")
+```
+
+# Setup
+
+```{R Setup, message = FALSE, results = 'hide'}
+library(dplyr)
+library(SummarizedExperiment)
+library(ExperimentHub)
+library(readxl)
+library(wateRmelon)
+library(minfi)
+library(ggpubr)
+library(ggrepel)
+cohort <- "ADNI"
+dir.base <- getwd()
+dir.base.data <- file.path(dir.base,"../AD-meta-analysis-blood-samples/")
+dir.base.data2 <- file.path(dir.base,"../AD-meta-analysis-blood-samples-bySex/")
+dir.data <- file.path(dir.base.data,"datasets/",cohort,"/data/DNA_methylation") 
+dir.data.clinical <- file.path(dir.base.data,"datasets/",cohort,"/data/Clinical") 
+dir.data.raw <- file.path(dir.base.data,"datasets/",cohort,"/data/DNA_methylation/idat") 
+dir.data.processed0 <- file.path(dir.base.data,"datasets/",cohort,"/data/DNA_methylation/processed") 
+dir.data.processed <- file.path(dir.base.data,"datasets/",cohort,"/data/DNA_methylation/processed/withSmoke/") 
+dir.data.aux <- file.path(dir.base.data,"datasets/Aux/") 
+dir.data.pca <- file.path(dir.data,"/pca_filtering/withSmoke/") 
+dir.results <- file.path(dir.base.data2,"analysis_results",cohort,"/withSmoke")
+#dir.results.glm <- file.path(dir.results,"/Logistic_regression_model")
+for(p in grep("dir",ls(),value = T)) dir.create(get(p),recursive = TRUE,showWarnings = FALSE)
+```
+
+# Data retrieval
+
+```{R, load_rgset_bs_filtered_min_65, include = T, eval = FALSE}
+load(file.path(dir.data.processed0,"RGSet_bs_filtered_min_age_at_visit_65_AD_CN.rda"))
+```
+
+```{R, load_bs_filtered_min_65, include = T, eval = FALSE}
+adni.se <- readRDS(file.path(dir.data.pca, "ADNI_QNBMIQ_PCfiltered_min_age_at_visit_65_AD_CN.RDS"))
+```
+
+
+```{R, load_detectP, include = FALSE, eval = FALSE}
+load(file.path(dir.data.processed0,"detectionP_passed_probes_AD_CN.rda"))
+nb.probes.before.norm <- nrow(failed.01)
+# length(passedProbes) #833642
+# length(grep("cg",passedProbes)) #831149
+```
+
+## Probes QC
+
+1. keep only probes that start with "cg"
+2. drop probes where SNP with MAF >= 0.01 was present in the last 5 bp of the probe.
+
+```{R, eval = FALSE}
+library(minfi)
+library(wateRmelon)
+library(RPMM)
+library(DMRcate)
+```
+
+```{R, eval = FALSE}
+annotation <- minfi::getAnnotation(RGSet.bs.filtered.min.age_at_visit.65.AD_CN) %>% as.data.frame %>% dplyr::filter(chr %in% c("chrX","chrY"))
+betaSet <- getBeta(RGSet.bs.filtered.min.age_at_visit.65.AD_CN)
+betaSet <- betaSet[rownames(betaSet) %in% rownames(annotation), ]
+nb.chrXY.probes <- nrow(betaSet)
+rm(RGSet.bs.filtered.min.age_at_visit.65.AD_CN)
+betaSet <- betaSet[rownames(betaSet) %in% passedProbes, ]
+betaSet <- betaSet[grep("cg",rownames(betaSet)),]
+gc()
+
+# snapshotDate(): 2021-03-30
+betaSet <- rmSNPandCH(
+  object = betaSet,
+  dist = 5,
+  mafcut = 0.01,
+  and = TRUE,
+  rmcrosshyb = TRUE,
+  rmXY = FALSE
+)
+```
+
+```{R, include = F}
+# > dim(betaSet)
+# [1] 16200  822
+```
+
+
+## Merge DNA methylation matrix on autosome with the one on chrX, chrY
+
+```{R, eval = FALSE}
+betaSet <- betaSet[,colnames(adni.se)]
+identical(colnames(adni.se), colnames(betaSet))
+betaQN_BMIQ <- rbind(assay(adni.se), betaSet)
+table(base::duplicated(row.names(betaQN_BMIQ)))
+# 766978
+save(
+  betaQN_BMIQ,
+  clinical.filtered.min.age_at_visit.65.AD_CN,
+  file = file.path(dir.data.processed,"RGSet_bs_filtered_min_age_at_visit_65_with_XY_AD_CN.rda")
+)
+```
+
+### Summarize Experiment
+
+```{R, eval = FALSE}
+#library(ADNIMERGE)
+library(dplyr)
+library(readxl)
+library(IlluminaHumanMethylationEPICanno.ilm10b4.hg19)
+library(S4Vectors)
+epic.hg19 <- minfi::getAnnotation(IlluminaHumanMethylationEPICanno.ilm10b4.hg19)
+epic.hg19.gr <- epic.hg19 %>% makeGRangesFromDataFrame(
+  start.field = "pos", end.field = "pos",keep.extra.columns = T
+)
+clinical <- colData(adni.se)
+betaQN_BMIQ <- betaQN_BMIQ[rownames(betaQN_BMIQ) %in% names(epic.hg19.gr),]
+rowData <- epic.hg19.gr[rownames(betaQN_BMIQ),]
+data <- betaQN_BMIQ[,colnames(betaQN_BMIQ) %in% rownames(clinical)]
+data <- data[,rownames(clinical)]
+
+adni.se <- SummarizedExperiment::SummarizedExperiment(
+  assays = SimpleList("DNAm" = data),
+  rowData = rowData,
+  metadata = list("genome" = "hg19"),
+  colData = clinical
+)
+
+saveRDS(adni.se, file = file.path(dir.data.processed,"adni_se_min_age_at_visit_65_with_XY_AD_CN.RDS"))
+readr::write_csv(
+  clinical %>% as.data.frame, 
+  file = file.path(dir.data.processed,"ADNI_Se_colData_with_XY_AD_CN.csv")
+)
+```
+
+
+# Summary after QC steps
+
+
+## Data and metadata
+```{R}
+adni.se <- readRDS(file.path(dir.data.processed,"adni_se_min_age_at_visit_65_with_XY_AD_CN.RDS"))
+#adni.se <- adni.se[,adni.se$DX %in% c("CN","Dementia")]
+nb.samples.after.pca <- ncol(adni.se) #793
+nb.probes.after.norm <- nrow(adni.se) #766978
+```
+
+```{R}
+adni.prediction <- wateRmelon::estimateSex(assay(adni.se))
+plyr::count(adni.prediction$predicted_sex != adni.se$PTGENDER)
+colData(adni.se[,adni.prediction$predicted_sex != adni.se$PTGENDER])
+adni.prediction[adni.prediction$predicted_sex != adni.se$PTGENDER,]
+```
+
+
+
+```{R}
+pheno.cn.ad <- colData(adni.se)
+pheno.cn.ad.female <- pheno.cn.ad[pheno.cn.ad$PTGENDER == "Female" & pheno.cn.ad$DX %in% c("CN","Dementia"),]
+nb.samples.after.pca.female <- nrow(pheno.cn.ad.female) #364
+plyr::count(pheno.cn.ad.female$DX)
+plyr::count(pheno.cn.ad.female %>% as.data.frame() %>% group_by(RID) %>% dplyr::slice(which.max(DateDrawn)) %>% pull(DX)) ## count last visit ## 179
+pheno.cn.ad.female %>% as.data.frame %>% dplyr::group_by(DX) %>% dplyr::summarise(mean(age_at_visit), sd(age_at_visit))
+pheno.cn.ad.female %>% as.data.frame %>% dplyr::summarise(mean(age_at_visit), sd(age_at_visit))  %>% round(digits = 1)
+```
+
+```{R}
+pheno.cn.ad.male <- pheno.cn.ad[pheno.cn.ad$PTGENDER == "Male" & pheno.cn.ad$DX %in% c("CN","Dementia"),]
+plyr::count(pheno.cn.ad.male$DX)
+nb.samples.after.pca.male <- nrow(pheno.cn.ad.male) #429
+plyr::count(pheno.cn.ad.male %>% as.data.frame() %>% group_by(RID) %>% dplyr::slice(which.max(DateDrawn)) %>% pull(DX)) ## count last visit ## 219
+pheno.cn.ad.male %>% as.data.frame %>% dplyr::group_by(DX) %>% dplyr::summarise(mean(age_at_visit), sd(age_at_visit))
+pheno.cn.ad.male %>% as.data.frame %>% dplyr::summarise(mean(age_at_visit), sd(age_at_visit))  %>% round(digits = 1)
+```
+
+
+## Numbers of samples and probes removed in each step
+
+### Female
+```{R, eval = FALSE, echo=FALSE, include = F}
+df.samples <- data.frame(
+  "Number of samples" =  c(
+    nb.samples, 
+    nb.samples.bc.filtered, 
+    nb.samples.before.pca, 
+    nb.samples.after.pca.female
+  ),
+  "Description" = c(
+    "Number of FEMALE samples before bisulfiteConversion filter",
+    "Number of FEMALE samples after bisulfiteConversion filter",
+    "Number of FEMALE samples before PCA",
+    "Number of FEMALE samples after PCA"
+  )
+)    
+df.samples 
+```
+
+### Male
+```{R, eval = FALSE, echo=FALSE, include = F}
+df.samples <- data.frame(
+  "Number of samples" =  c(
+    nb.samples, 
+    nb.samples.bc.filtered, 
+    nb.samples.before.pca, 
+    nb.samples.after.pca.male
+  ),
+  "Description" = c(
+    "Number of MALE samples before bisulfiteConversion filter",
+    "Number of MALE samples after bisulfiteConversion filter",
+    "Number of MALE samples before PCA",
+    "Number of MALE samples after PCA"
+  )
+)    
+df.samples 
+```
+
+
+```{R, eval = FALSE, echo=FALSE, include = F}
+# Create summary table
+df.probes <- data.frame(
+  "Number of probes" = c(
+    nb.probes.before.norm,
+    length(passedProbes),
+    nb.probes.after.norm
+  ),
+  "Description" = c(
+    "total number of probes in raw data",
+    "probes with detection P < 0.01 for all samples",
+    "only probes that start with cg, no crosshyb, no X, no Y, no smoking, mafcut = 0.01"
+  )
+)
+df.probes %>% gt::gt() 
+```
+
+# Checking the data
+
+## show probes not starting with cg are removed
+```{R check_cg}
+grep("cg",rownames(adni.se),invert = T)
+```
+
+## show probes on X/Y are included
+```{R check_xy}
+c("chrX", "chrY") %in% (seqnames(adni.se) %>% as.character())
+```
+
+## show probes with SNP with MAF >= 0.01 and in the last 5bp were removed (compared with DMRcateData package probes) 
+```{R}
+eh <- ExperimentHub()
+snpsall <- eh[["EH3130"]]
+any(snpsall$probe[snpsall$mafs > 0.01 & snpsall$distances <= 5] %>% as.character() %in% rownames(adni.se)) 
+crosshyb <- eh[["EH3129"]]
+any(crosshyb %in% rownames(adni.se))
+XY.probes <- eh[["EH3131"]]
+any(XY.probes %in% rownames(adni.se)) 
+```
+
+## select a few smoking probes, and show they are included
+```{R}
+any(
+  c("cg16145216", "cg19406367",
+    "cg05603985", "cg10768063",
+    "cg14099685", "cg12513616",
+    "cg04085571", "cg23648810"
+  ) %in% rownames(adni.se)
+)
+```
+
+## show quantiles for each sample is the same
+```{R quantile_box_plot}
+boxplot(assay(adni.se[,1:10]))
+plyr::adply(assay(adni.se[,1:10]),.margins = 2,.fun = function(x){quantile(x)})
+```
+
+
+## check cell type proportions adds up to 1
+```{R}
+table(rowSums(colData(adni.se)[,c("B","NK","CD4T","CD8T","Mono","Neutro","Eosino")] %>% as.matrix()))
+```
+
+## show plate is a factor
+```{R}
+class(adni.se$PlateNumber)
+```
+
+## check outliers samples are not in datset anymore
+```{R}
+outliers <- readr::read_csv(paste0(dir.data.pca,
+                                   "ADNI_PCs_usingBetas_min_age_at_visit_65_AD_CN.csv"),
+                            col_types = readr::cols()) %>%
+  dplyr::filter(outlier_PC1 == 1 | outlier_PC2 == 1) %>% pull(1) 
+head(outliers)
+head(colnames(adni.se))
+any(outliers %in% colnames(adni.se))
+```
+
+## For one sample, check distribution of type I and type II probes
+```{R checking_part2, eval = TRUE}
+library(sm)
+
+annotType <- IlluminaHumanMethylationEPICanno.ilm10b4.hg19::Manifest
+annotType$designTypeNumeric <- ifelse(annotType$Type == "I",1,2)
+probes <- assay(adni.se)[,1] %>% na.omit()
+sm.density.compare(
+  probes,
+  annotType[names(probes),]$designTypeNumeric
+)
+
+probes <- assay(adni.se)[,2] %>% na.omit()
+sm.density.compare(
+  probes,
+  annotType[names(probes),]$designTypeNumeric
+)
+
+```
+
+
+```{R checking_part5, include = FALSE}
+rm(adni.se)
+```
+
+
+# Analysis
+```{R load_analysis_data, eval = FALSE}
+adni.se <- readRDS(file.path(dir.data.processed,"adni_se_min_age_at_visit_65_with_XY_AD_CN.RDS"))
+```
+
+```{r}
+pheno <- data.frame(colData (adni.se))
+
+str(pheno)
+
+pheno$barcodes <- row.names(pheno)
+pheno$Sex <- factor(pheno$PTGENDER)
+pheno$PLATE <- factor(pheno$PlateNumber)
+pheno$granulocytes <- pheno$Eosino + pheno$Neutro
+pheno <- pheno %>% dplyr::select(
+  c(RID, barcodes, Sex, age_at_visit, 
+    DX, PlateNumber, PTEDUCAT,
+    B, NK,   CD4T,   Mono, granulocytes
+  )
+)
+
+pheno.cn.ad.male <- pheno[ pheno$Sex == "Male",]
+pheno.cn.ad.female <- pheno[ pheno$Sex == "Female",]
+```
+
+```{R}
+plyr::count(pheno.cn.ad.female$DX)
+
+pheno.cn.ad.female.last_visit <- pheno.cn.ad.female %>% as.data.frame %>%  dplyr::group_by(RID) %>% filter(age_at_visit == max(age_at_visit))
+plyr::count(pheno.cn.ad.female.last_visit$DX)
+pheno.cn.ad.female.last_visit %>% dplyr::group_by(DX) %>% dplyr::summarise(mean(age_at_visit), sd(age_at_visit)) 
+pheno.cn.ad.female.last_visit[,-1] %>% dplyr::summarise(mean(age_at_visit), sd(age_at_visit)) 
+pheno.cn.ad.female.last_visit[,-1] %>% dplyr::group_by(DX) %>% summarise(mean(PTEDUCAT), sd(PTEDUCAT))
+```
+
+
+
+```{r}
+## Female
+pheno.cn.ad.female.last_visit  %>%
+  t.test(
+    PTEDUCAT ~ DX,
+    data = .
+  )
+```
+
+```{r}
+## Male
+pheno.cn.ad.male.last_visit  %>%
+  t.test(
+    PTEDUCAT ~ DX,
+    data = .
+  )
+```
+
+
+```{R}
+plyr::count(pheno.cn.ad.male$DX)
+
+pheno.cn.ad.male.last_visit <- pheno.cn.ad.male %>% as.data.frame %>%  dplyr::group_by(RID) %>% filter(age_at_visit == max(age_at_visit))
+plyr::count(pheno.cn.ad.male.last_visit$DX)
+pheno.cn.ad.male.last_visit %>% dplyr::group_by(DX) %>% dplyr::summarise(mean(age_at_visit), sd(age_at_visit)) 
+pheno.cn.ad.male.last_visit[,-1] %>% dplyr::summarise(mean(age_at_visit), sd(age_at_visit)) 
+pheno.cn.ad.male.last_visit[,-1] %>% dplyr::group_by(DX) %>% summarise(mean(PTEDUCAT), sd(PTEDUCAT))
+```
+
+```{r}
+pheno.cn.ad.female.first_visit <- pheno.cn.ad.female %>% as.data.frame %>%  dplyr::group_by(RID) %>% filter(age_at_visit == min(age_at_visit))
+plyr::count(pheno.cn.ad.female.first_visit$DX)
+```
+
+
+```{r, eval = T}
+result_SSc <- readr::read_csv(file.path(dir.data,"ADNI_Smoking_Scores_AD_CN.csv"))
+any(is.na(result_SSc$smokingScore))
+```
+
+
+```{R sas, eval = FALSE}
+str_data <- function(se){
+  
+  mvalues <- log2(assay(se)/(1 - assay(se)))
+  mvalues <- mvalues %>% t %>% as.data.frame()
+  mvalues$barcodes <- rownames(mvalues)
+  mvalues.pivot <- tidyr::pivot_longer(mvalues,!barcodes,names_to = "cpg", values_to = "mvalues")
+  
+  beta <- assay(se)
+  beta <- beta %>% t %>% as.data.frame()
+  beta$barcodes <- rownames(beta)
+  beta.pivot <- pivot_longer(beta,!barcodes,names_to = "cpg", values_to = "beta")
+  
+  
+  #  0 = control, 1 = AD, 2 = MCI
+  pheno <- data.frame(colData (se))
+  pheno$DIAGNOSIS <- factor(pheno$DX, levels = c("CN", "Dementia"))
+  pheno <- pheno[!is.na(pheno$DIAGNOSIS),]
+  pheno$barcodes <- row.names(pheno)
+  
+  # add indicator for first and last visit
+  pheno$visit <- sub("m",  "", pheno$VISCODE)
+  pheno$PlateNumber <- factor(pheno$PlateNumber)
+  pheno$granulocytes <- pheno$Eosino + pheno$Neutro
+  pheno$smokingScore <- result_SSc[match(pheno$barcodes, result_SSc$SampleName),]$smokingScore
+  
+  pheno <- pheno %>% dplyr::select(
+    c(barcodes, RID, VISCODE, PTGENDER, age_at_visit, visit, 
+      DIAGNOSIS, PlateNumber,
+      B, NK,   CD4T, Mono,   granulocytes, smokingScore
+    )
+  )
+  final <- dplyr::inner_join(pheno,beta.pivot) %>%  dplyr::inner_join(mvalues.pivot)
+  final <- final[order(final$cpg,final$RID,final$VISCODE),]
+  final
+}
+
+dir.create(file.path(dir.results,"/AD_CN//AD_CN_male/DATA_for_SAS_models//"),recursive = T)
+for(start in seq(1,nrow(adni.se),by = 1000)){
+  print(start)
+  end <- start + 1000 - 1
+  idx <- which(start == seq(1,nrow(adni.se),by = 1000))
+  if(end > nrow(adni.se)) end <- nrow(adni.se)
+  adni.se.selected <- adni.se[start:end,  adni.se$PTGENDER == "Male"]
+  print(dim(adni.se.selected))
+  final <- str_data(adni.se.selected)
+  final$VISCODE <- final$visit <- final$mvalues <- NULL
+  readr::write_csv(
+    final,
+    file = paste0(
+      dir.results,
+      "/AD_CN//AD_CN_male/DATA_for_SAS_models//",
+      "ADNI_1000_cpgs_with_smok_probes",idx,".csv"
+    )
+  )
+  #slackr::slackr_msg(paste("SAS data for male", idx, "saving completed!"))
+}
+
+dir.create(file.path(dir.results,"//AD_CN//AD_CN_female/DATA_for_SAS_models//"),recursive = T)
+plyr::a_ply(seq(1,nrow(adni.se),by = 1000),.margins = 1,.fun = function(start){
+  end <- start + 1000 - 1
+  idx <- which(start == seq(1,nrow(adni.se),by = 1000))
+  if(end > nrow(adni.se)) end <- nrow(adni.se)
+  adni.se.selected <- adni.se[start:end, adni.se$PTGENDER == "Female"]
+  final <- str_data(adni.se.selected)
+  final$VISCODE <- final$visit <- final$mvalues <- NULL
+  readr::write_csv(
+    final,
+    file = paste0(
+      dir.results,
+      "/AD_CN//AD_CN_female/DATA_for_SAS_models//",
+      "ADNI_1000_cpgs_with_smok_probes",idx,".csv"
+    )
+  )
+   #slackr::slackr_msg(paste("SAS data for female", idx, "saving completed!"))
+},.progress = "time")
+```
+
+
+
+## Logistic regression model
+
+
+### No adjust for smoking scores
+
+```{r}
+dir.results.glmm <- file.path(dir.results,"/AD_CN/Logistic_regression_model/")
+```
+
+
+#### Male
+```{R, eval = FALSE}
+dir.create(dir.results.glmm, recursive = T)
+glmm_male_result <- read_xlsx(
+  file.path(dir.base.data2,"LW/Males_SAS/results/ad-vs-cn-males_6-25-2022.xlsx"))
+logistic_mixed_model_ad_cn.males <- glmm_male_result
+logistic_mixed_model_ad_cn.males$file_order <- NULL
+readr::write_csv(
+  logistic_mixed_model_ad_cn.males, 
+  file = file.path(dir.results.glmm, "Males_ADNI_AD_vs_CN_glmm_using_beta_SAS.csv")
+)
+```
+
+#### Female
+```{R, eval = FALSE}
+glmm_female_result <- read_xlsx(
+  file.path(dir.base.data2,"LW/Females_SAS/results/ad-vs-cn-females_6-25-2022.xlsx"))
+logistic_mixed_model_ad_cn.females <- glmm_female_result
+logistic_mixed_model_ad_cn.females$file_order <- NULL
+readr::write_csv(
+  logistic_mixed_model_ad_cn.females, 
+  file = file.path(dir.results.glmm, "Females_ADNI_AD_vs_CN_glmm_using_beta_SAS.csv")
+)
+```
+
+### Adjust for smoking scores
+
+#### Males
+
+```{r eval = F}
+glmm_male_result <- read_xlsx(
+  file.path(dir.base.data2,"LW/Males_SAS_adjust_smoking/results/ad-vs-cn-males-adjust-smoking_6-28-2022.xlsx"))
+logistic_mixed_model_ad_cn.males.SSc <- glmm_male_result
+logistic_mixed_model_ad_cn.males.SSc$file_order <- NULL
+readr::write_csv(
+  logistic_mixed_model_ad_cn.males.SSc, 
+  file = file.path(dir.results.glmm, "Males_ADNI_AD_vs_CN_glmm_using_beta_SAS_adjust_smoking.csv")
+)
+```
+
+#### Females
+
+```{r eval = F}
+glmm_female_result <- read_xlsx(
+  file.path(dir.base.data2,"LW/Females_SAS_adjust_smoking/results/ad-vs-cn-females-adjust-smoking_6-27-2022.xlsx"))
+logistic_mixed_model_ad_cn.females.SSc <- glmm_female_result
+logistic_mixed_model_ad_cn.females.SSc$file_order <- NULL
+readr::write_csv(
+  logistic_mixed_model_ad_cn.females.SSc, 
+  file = file.path(dir.results.glmm, "Females_ADNI_AD_vs_CN_glmm_using_beta_SAS_adjust_smoking.csv")
+)
+```
+
+
+### Adjust for education years
+
+#### Male 
+
+```{r eval = F}
+glmm_male_result <- read_xlsx(
+  file.path(dir.base.data2,"LW/Males_SAS_adjust_education/RESULTS/ad-vs-cn-males-adjust-education_6-29-2022.xlsx"))
+logistic_mixed_model_ad_cn.males.edu <- glmm_male_result
+logistic_mixed_model_ad_cn.males.edu$file_order <- NULL
+readr::write_csv(
+  logistic_mixed_model_ad_cn.males.edu, 
+  file = file.path(dir.results.glmm, "Males_ADNI_AD_vs_CN_glmm_using_beta_SAS_adjust_edu.csv")
+)
+```
+
+#### Female 
+
+```{r eval = F}
+glmm_female_result <- read_xlsx(
+  file.path(dir.base.data2,"LW/Females_SAS_adjust_education/results/ad-vs-cn-females-adjust-education_6-29-2022.xlsx"))
+logistic_mixed_model_ad_cn.females.edu <- glmm_female_result
+logistic_mixed_model_ad_cn.females.edu$file_order <- NULL
+readr::write_csv(
+  logistic_mixed_model_ad_cn.females.edu, 
+  file = file.path(dir.results.glmm, "Females_ADNI_AD_vs_CN_glmm_using_beta_SAS_adjust_edu.csv")
+)
+```
+
+
+## Annotate results
+```{R annotate_functions, eval = FALSE}
+message("o Stating to annotate")
+adni.se <- readRDS(file.path(dir.data.processed, "adni_se_min_age_at_visit_65_with_XY_AD_CN.RDS"))
+load(file.path(dir.data.aux,"great_EPIC_array_annotation.rda"))
+load(file.path(dir.data.aux,"E073_15_coreMarks_segments.rda"))
+load(file.path(dir.data.aux,"meta_analysis_cpgs.rda"))
+
+annotate_results <- function(result, data.se){
+  #result <- result[result$cpg %in% rownames(data.se),]
+  result$fdr <- p.adjust(result$Probt,method = "fdr")
+  result <- cbind(
+    result,
+    rowRanges(data.se)[result$cpg] %>% as.data.frame() %>% dplyr::select(1:4)
+  )
+  result$Islands.UCSC.Relation_to_Island <- IlluminaHumanMethylationEPICanno.ilm10b4.hg19::Islands.UCSC[result$cpg,"Relation_to_Island"]
+  result$UCSC_RefGene_Name <- IlluminaHumanMethylationEPICanno.ilm10b4.hg19::Other[result$cpg,"UCSC_RefGene_Name"]       
+  result$UCSC_RefGene_Group <- IlluminaHumanMethylationEPICanno.ilm10b4.hg19::Other[result$cpg,"UCSC_RefGene_Group"]     
+  
+  result <- dplyr::left_join(result, great,by = c("seqnames","start","end","cpg"))
+  
+  hits <- findOverlaps(rowRanges(data.se)[result$cpg],ChmmModels.gr) %>% as.data.frame()
+  hits$state <- ChmmModels.gr$state[hits$subjectHits]
+  hits$cpg <- result$cpg[hits$queryHits]
+  result <- merge(result, hits[,c("state","cpg")], all.x = TRUE, sort = FALSE, by = "cpg")
+  
+  result$sig.in.brain <- result$cpg %in% brain.meta.analysis.cpgs
+  return(result)
+}
+```
+
+```{R annotate, eval = FALSE}
+## No adjust smoking scores
+logistic_mixed_model_ad_cn.females <- readr::read_csv( 
+  file.path(dir.results.glmm,"Females_ADNI_AD_vs_CN_glmm_using_beta_SAS.csv")
+)
+
+logistic_mixed_model_ad_cn.females <- logistic_mixed_model_ad_cn.females %>% annotate_results(adni.se)
+readr::write_csv(
+  x = logistic_mixed_model_ad_cn.females,
+  file = file.path(dir.results.glmm,"Females_ADNI_AD_vs_CN_glmm_using_beta_all_annotated.csv"),
+)
+
+logistic_mixed_model_ad_cn.males <- readr::read_csv( 
+  file.path(dir.results.glm,"Males_ADNI_AD_vs_CN_glmm_using_beta_SAS.cvs")
+)
+
+logistic_mixed_model_ad_cn.annotated.males <- logistic_mixed_model_ad_cn.males %>% annotate_results(adni.se)
+readr::write_csv(
+  x = logistic_mixed_model_ad_cn.annotated.males,
+  file = file.path(dir.results.glmm,"Males_ADNI_AD_vs_CN_glmm_using_beta_all_annotated.csv"),
+)
+## Adjust smoking scores
+logistic_mixed_model_ad_cn.females.SSc <- readr::read_csv( 
+  file.path(dir.results.glmm,"Females_ADNI_AD_vs_CN_glmm_using_beta_SAS_adjust_smoking.csv")
+)
+
+logistic_mixed_model_ad_cn.annotated.females.SSc <- logistic_mixed_model_ad_cn.females.SSc %>% annotate_results(adni.se)
+readr::write_csv(
+  x = logistic_mixed_model_ad_cn.annotated.females.SSc,
+  file = file.path(dir.results.glmm,"Females_ADNI_AD_vs_CN_glmm_using_beta_adjust_smoking_all_annotated.csv"),
+)
+
+logistic_mixed_model_ad_cn.males.SSc <- readr::read_csv( 
+  file.path(dir.results.glmm,"Males_ADNI_AD_vs_CN_glmm_using_beta_SAS_adjust_smoking.csv")
+)
+
+logistic_mixed_model_ad_cn.annotated.males.SSc <- logistic_mixed_model_ad_cn.males.SSc %>% annotate_results(adni.se)
+readr::write_csv(
+  x = logistic_mixed_model_ad_cn.annotated.males.SSc,
+  file = file.path(dir.results.glmm,"Males_ADNI_AD_vs_CN_glmm_using_beta_adjust_smoking_all_annotated.csv"),
+)
+## Adjust education year
+logistic_mixed_model_ad_cn.females.edu <- readr::read_csv( 
+  file.path(dir.results.glmm,"Females_ADNI_AD_vs_CN_glmm_using_beta_SAS_adjust_edu.csv")
+)
+
+logistic_mixed_model_ad_cn.annotated.females.edu <- logistic_mixed_model_ad_cn.females.edu %>% annotate_results(adni.se)
+readr::write_csv(
+  x = logistic_mixed_model_ad_cn.annotated.females.edu,
+  file = file.path(dir.results.glmm,"Females_ADNI_AD_vs_CN_glmm_using_beta_adjust_edu_all_annotated.csv"),
+)
+
+logistic_mixed_model_ad_cn.males.edu <- readr::read_csv( 
+  file.path(dir.results.glmm,"Males_ADNI_AD_vs_CN_glmm_using_beta_SAS_adjust_edu.csv")
+)
+
+logistic_mixed_model_ad_cn.annotated.males.edu <- logistic_mixed_model_ad_cn.males.edu %>% annotate_results(adni.se)
+readr::write_csv(
+  x = logistic_mixed_model_ad_cn.annotated.males.edu,
+  file = file.path(dir.results.glmm,"Males_ADNI_AD_vs_CN_glmm_using_beta_adjust_edu_all_annotated.csv"),
+)
+```
+
+```{R read_results, include = FALSE, eval = T}
+logistic_mixed_model_ad_cn.annotated.females <- readr::read_csv(
+  file.path(dir.results.glmm,"Females_ADNI_AD_vs_CN_glmm_using_beta_all_annotated.csv")
+)
+logistic_mixed_model_ad_cn.annotated.males <- readr::read_csv(
+  file.path(dir.results.glmm,"Males_ADNI_AD_vs_CN_glmm_using_beta_all_annotated.csv")
+)
+logistic_mixed_model_ad_cn.annotated.females.SSc <- readr::read_csv(
+  file.path(dir.results.glmm,"Females_ADNI_AD_vs_CN_glmm_using_beta_adjust_smoking_all_annotated.csv")
+)
+logistic_mixed_model_ad_cn.annotated.males.SSc <- readr::read_csv(
+  file.path(dir.results.glmm,"Males_ADNI_AD_vs_CN_glmm_using_beta_adjust_smoking_all_annotated.csv")
+)
+logistic_mixed_model_ad_cn.annotated.females.edu <- readr::read_csv(
+  file.path(dir.results.glmm,"Females_ADNI_AD_vs_CN_glmm_using_beta_adjust_edu_all_annotated.csv")
+)
+logistic_mixed_model_ad_cn.annotated.males.edu <- readr::read_csv(
+  file.path(dir.results.glmm,"Males_ADNI_AD_vs_CN_glmm_using_beta_adjust_edu_all_annotated.csv")
+)
+```
+
+# Calculate inflation factors and Bacon correction for final results
+
+## Auxiliary functions
+
+```{R inflation, message = FALSE, results = 'hide', eval = T}
+library(dplyr)
+library(bacon)
+library(GWASTools)
+
+estimation_of_inflation <- function(data){
+  ### 1. Compute genomic inflation factor before bacon adjustment
+  data$zvalue <- data$Estimate / data$StdErr
+  #data$zvalue <- qnorm(pt(data$tvalue, df))
+  data$chisq <- (data$zvalue) ^ 2
+  # inflation factor - last term is median from chisq distrn with 1 df  
+  inflationFactor <- median(data$chisq,na.rm = TRUE) / qchisq(0.5, 1)
+  print("o Before bacon correction")
+  print("Conventional lambda")
+  print(inflationFactor)
+  ### 2. bacon analysis
+  bc <- bacon(
+    teststatistics = NULL,
+    effectsizes =  data$Estimate,
+    standarderrors = data$StdErr,
+    na.exclude = TRUE
+  )
+  # inflation factor
+  print("bacon lambda")
+  print(inflation(bc))
+   print("bias")
+  print(bias(bc))
+  
+  ### 3. Create final dataset
+  data.with.inflation <- data.frame(
+    data,
+    Estimate.bacon = bacon::es(bc),
+    StdErr.bacon = bacon::se(bc),
+    pValue.bacon = pval(bc),
+    fdr.bacon = p.adjust(pval(bc), method = "fdr"),
+    stringsAsFactors = FALSE
+  )
+  print("o After bacon correction")
+  print("Conventional lambda")
+  print(median((data.with.inflation$Estimate.bacon/data.with.inflation$StdErr.bacon) ^ 2,na.rm = TRUE)/qchisq(0.5, 1))
+  print("bacon lambda")
+  print(estimates(bc))
+  
+  percent_null <- trunc ( estimates(bc)[1]*100, digits = 0)
+  percent_1  <- trunc ( estimates(bc)[2]*100, digits = 0 )
+  percent_2  <- 100 - percent_null - percent_1  
+  bc2 <- bacon(
+    teststatistics = NULL,
+    effectsizes =  data.with.inflation$Estimate.bacon,
+    standarderrors = data.with.inflation$StdErr.bacon,
+    na.exclude = TRUE, 
+    priors = list(sigma = list(alpha = 1.28, beta =
+                                 0.36), mu = list(lambda = c(0, 3, -3), tau = c(1000, 100, 100)), epsilon
+                  = list(gamma = c(percent_null, percent_1, percent_2)))
+  )
+  
+  print(inflation(bc2))
+  print(estimates(bc2))
+  
+  data.with.inflation <- data.with.inflation %>% dplyr::select(-c(zvalue, chisq))
+  return(
+    list(
+      "data.with.inflation" = data.with.inflation,
+      "inflationFactor" =   inflationFactor,
+      "estimatedInflation" = inflation(bc),
+      "baconObject" = bc
+    )
+  )
+}
+
+
+plot_inflation <- function(data, main){
+  qqPlot(
+    data$data.with.inflation$Probt, ci = TRUE, 
+    main = paste0(main)
+  ) + text(
+    x = 0.5, 
+    y = -log10(min(data$data.with.inflation$Probt)) - 0.5,
+    labels = bquote(lambda == .(format(data$inflationFactor,digits = 4))),
+    pos = 4
+  ) + text(
+    x = 0.5, 
+    y = -log10(min(data$data.with.inflation$Probt)) - 1,
+    labels = bquote(lambda[bacon] == .(format(data$estimatedInflation,digits = 4))),
+    pos = 4
+  )
+}
+```
+
+### Males
+
+#### No adjust smoking scores
+
+```{R, eval = T}
+logistic_mixed_model_ad_cn.with.inflation <- estimation_of_inflation(data = logistic_mixed_model_ad_cn.annotated.males)
+dim(logistic_mixed_model_ad_cn.with.inflation$data.with.inflation)
+```
+
+
+```{r}
+plot(logistic_mixed_model_ad_cn.with.inflation$baconObject) 
+```
+
+```{r}
+components <- sample(1:3,prob=c(0.9999806, 9.072198e-06, 1.034219e-05),size=N,replace=TRUE)
+mus <- c(-0.1220183, 2.971339, -2.964668)
+sds <- sqrt(c( 0.7897917, 1.156797, 1.081619))
+
+ggplot(data.frame(ts = tstat(logistic_mixed_model_ad_cn.with.inflation$baconObject, corrected = F), 
+                  norm = rnorm(767366,0,1), 
+                  empirical = 0.9999806*rnorm(767366, -0.1220183, 0.7897917),
+                  mixture = rnorm(n=767366,mean=mus[components],sd=sds[components])), aes(x = ts)) + 
+  geom_histogram(aes(y = ..density..), bins = 100,  fill = "grey") + theme_classic() + 
+  geom_density(aes(x = norm)) + geom_density(aes(x = empirical), color = "red") +
+  geom_density(aes(x = mixture), color = "navy")
+```
+
+
+
+```{r}
+fit(logistic_mixed_model_ad_cn.with.inflation$baconObject, n=100)
+```
+
+
+```{r eval = F, echo = F}
+ggsave(file.path(dir.base.data2,"analysis_results/", "others/distribution_plot/ADNI_Male_test_stat_and_null_plot.pdf"),
+       width = 12,
+       height = 9 )
+```
+
+
+```{R, eval = F}
+readr::write_csv(
+  x = logistic_mixed_model_ad_cn.with.inflation$data.with.inflation,
+  file = file.path(dir.results.glmm,"Males_ADNI_AD_vs_CN_glmm_using_beta_with_inflation.csv")
+)
+```
+
+
+
+```{R, fig.width = 6, eval = T}
+plot_inflation(
+  data = logistic_mixed_model_ad_cn.with.inflation, 
+  main = "MALES ADNI AD vs CN - single cpg\n Logistic regression model"
+)
+```
+
+```{r echo = F}
+rm(logistic_mixed_model_ad_cn.with.inflation)
+```
+
+
+#### Adjust smoking scores
+
+```{R, eval = T}
+logistic_mixed_model_ad_cn.SSc.with.inflation <- estimation_of_inflation(data = logistic_mixed_model_ad_cn.annotated.males.SSc)
+dim(logistic_mixed_model_ad_cn.SSc.with.inflation$data.with.inflation)
+```
+
+```{r}
+plot(logistic_mixed_model_ad_cn.SSc.with.inflation$baconObject)
+```
+
+```{r eval = F, echo = F}
+ggsave(file.path(dir.base.data2,"analysis_results/",  "others/distribution_plot/ADNI_Male_adjust_SSc_test_stat_and_null_plot.pdf"),
+       width = 12,
+       height = 9 )
+```
+
+```{R, eval = F}
+readr::write_csv(
+  x = logistic_mixed_model_ad_cn.SSc.with.inflation$data.with.inflation,
+  file = file.path(dir.results.glmm,"Males_ADNI_AD_vs_CN_glmm_using_beta_adjust_smoking_with_inflation.csv")
+)
+```
+
+
+
+```{R, fig.width = 6, eval = T}
+plot_inflation(
+  data = logistic_mixed_model_ad_cn.SSc.with.inflation, 
+  main = "MALES ADNI AD vs CN - single cpg\n Logistic regression model"
+)
+```
+
+
+
+```{r echo = F}
+rm(logistic_mixed_model_ad_cn.SSc.with.inflation)
+```
+
+#### Adjust education year
+
+```{r}
+logistic_mixed_model_ad_cn.edu.with.inflation <- estimation_of_inflation(data = logistic_mixed_model_ad_cn.annotated.males.edu)
+dim(logistic_mixed_model_ad_cn.edu.with.inflation$data.with.inflation)
+```
+
+```{R, eval = F}
+readr::write_csv(
+  x = logistic_mixed_model_ad_cn.edu.with.inflation$data.with.inflation,
+  file = file.path(dir.results.glmm,"Males_ADNI_AD_vs_CN_glmm_using_beta_adjust_edu_with_inflation.csv")
+)
+```
+
+```{R, fig.width = 6, eval = T}
+plot_inflation(
+  data = logistic_mixed_model_ad_cn.edu.with.inflation, 
+  main = "MALE - ADNI AD vs CN - single cpg\n Logistic regression model"
+)
+```
+
+```{r}
+rm(logistic_mixed_model_ad_cn.edu.with.inflation)
+```
+
+
+
+### Females
+
+#### No adjust smoking scores
+
+```{R, eval = T}
+logistic_mixed_model_ad_cn.with.inflation <- estimation_of_inflation(data = logistic_mixed_model_ad_cn.annotated.females)
+dim(logistic_mixed_model_ad_cn.with.inflation$data.with.inflation)
+```
+
+```{r}
+plot(logistic_mixed_model_ad_cn.with.inflation$baconObject)
+```
+
+```{r eval = F, echo = F}
+ggsave(file.path(dir.base.data2,"analysis_results/", "others/distribution_plot/ADNI_Female_test_stat_and_null_plot.pdf"),
+       width = 12,
+       height = 9 )
+```
+
+```{R, eval = F}
+readr::write_csv(
+  x = logistic_mixed_model_ad_cn.with.inflation$data.with.inflation,
+  file = file.path(dir.results.glmm,"Females_ADNI_AD_vs_CN_glmm_using_beta_with_inflation.csv")
+)
+```
+
+```{R, fig.width = 6, eval = T}
+plot_inflation(
+  data = logistic_mixed_model_ad_cn.with.inflation, 
+  main = "FEMALE - ADNI AD vs CN - single cpg\n Logistic regression model"
+)
+```
+
+
+```{r echo = F}
+rm(logistic_mixed_model_ad_cn.with.inflation)
+```
+
+#### Adjust smoking scores
+
+```{r}
+logistic_mixed_model_ad_cn.SSc.with.inflation <- estimation_of_inflation(data = logistic_mixed_model_ad_cn.annotated.females.SSc)
+dim(logistic_mixed_model_ad_cn.SSc.with.inflation$data.with.inflation)
+```
+
+```{r}
+plot(logistic_mixed_model_ad_cn.SSc.with.inflation$baconObject)
+```
+
+```{r eval = F, echo = F}
+ggsave(file.path(dir.base.data2,"analysis_results/", "others/distribution_plot/ADNI_Female_adjust_SSc_test_stat_and_null_plot.pdf"),
+       width = 12,
+       height = 9 )
+```
+
+```{R, eval = F}
+readr::write_csv(
+  x = logistic_mixed_model_ad_cn.SSc.with.inflation$data.with.inflation,
+  file = file.path(dir.results.glmm,"Females_ADNI_AD_vs_CN_glmm_using_beta_adjust_smoking_with_inflation.csv")
+)
+```
+
+```{R, fig.width = 6, eval = T}
+plot_inflation(
+  data = logistic_mixed_model_ad_cn.SSc.with.inflation, 
+  main = "FEMALE - ADNI AD vs CN - single cpg\n Logistic regression model"
+)
+```
+
+```{r echo = F}
+rm(logistic_mixed_model_ad_cn.SSc.with.inflation)
+```
+
+
+#### Adjust education year
+
+```{r}
+logistic_mixed_model_ad_cn.edu.with.inflation <- estimation_of_inflation(data = logistic_mixed_model_ad_cn.annotated.females.edu)
+dim(logistic_mixed_model_ad_cn.edu.with.inflation$data.with.inflation)
+```
+
+```{R, eval = F}
+readr::write_csv(
+  x = logistic_mixed_model_ad_cn.edu.with.inflation$data.with.inflation,
+  file = file.path(dir.results.glmm,"Females_ADNI_AD_vs_CN_glmm_using_beta_adjust_edu_with_inflation.csv")
+)
+```
+
+```{R, fig.width = 6, eval = T}
+plot_inflation(
+  data = logistic_mixed_model_ad_cn.edu.with.inflation, 
+  main = "FEMALE - ADNI AD vs CN - single cpg\n Logistic regression model"
+)
+```
+
+```{r echo = F}
+rm(logistic_mixed_model_ad_cn.edu.with.inflation)
+```
+
+
+
+# Correlation and test
+
+## No adjust education year vs adjust education year
+
+### Male
+
+
+```{r}
+Male.logistic_mixed_model_ad_cn.with.inflation <- readr::read_csv(
+    file.path(dir.results.glmm,"Males_ADNI_AD_vs_CN_glmm_using_beta_with_inflation.csv")
+)
+Male.logistic_mixed_model_ad_cn.with.inflation <- Male.logistic_mixed_model_ad_cn.with.inflation %>%
+  dplyr::select(
+    cpg, Estimate.bacon, pValue.bacon, fdr.bacon 
+  )
+Male.logistic_mixed_model_ad_cn.edu.with.inflation <- readr::read_csv(
+    file.path(dir.results.glmm,"Males_ADNI_AD_vs_CN_glmm_using_beta_adjust_edu_with_inflation.csv")
+)
+Male.logistic_mixed_model_ad_cn.edu.with.inflation <- Male.logistic_mixed_model_ad_cn.edu.with.inflation %>%
+  dplyr::select(
+    cpg, Estimate.bacon, pValue.bacon, fdr.bacon 
+  )
+colnames(Male.logistic_mixed_model_ad_cn.edu.with.inflation)[-1] <- 
+  paste0("adjustEDU_", colnames(Male.logistic_mixed_model_ad_cn.edu.with.inflation)[-1])
+merge_df <- left_join(
+  Male.logistic_mixed_model_ad_cn.with.inflation,
+  Male.logistic_mixed_model_ad_cn.edu.with.inflation
+)
+merge_df.sig <- merge_df %>% filter(
+  pValue.bacon < 1E-05 | adjustEDU_pValue.bacon < 1E-05
+)
+```
+
+#### Coefficients
+
+
+```{r}
+### all coefficients
+cor.test(
+  merge_df$Estimate.bacon, 
+  merge_df$adjustEDU_Estimate.bacon,
+  method = "spearman"
+)
+### significant coefficients
+cor.test(
+  merge_df.sig$Estimate.bacon, 
+  merge_df.sig$adjustEDU_Estimate.bacon,
+  method = "spearman"
+)
+```
+
+
+```{r echo = F}
+ggscatter(merge_df,
+          x = "Estimate.bacon", y = "adjustEDU_Estimate.bacon",
+          size = 0.1) + 
+  stat_cor(method = "spearman", label.x = -1, label.y = 1) + 
+  xlab("Coefficients from No adjust EDU year") + 
+  ylab("Coefficients from Adjust EDU year") + 
+  ggtitle("ADNI Male coefficients of all CpG")
+```
+
+
+```{r echo = F}
+ggscatter(merge_df.sig,
+          x = "Estimate.bacon", y = "adjustEDU_Estimate.bacon",
+          size = 1) + 
+  stat_cor(method = "spearman", label.x = -0.4, label.y = 0.5) + 
+  geom_text_repel(aes(label = cpg), size = 2) +
+  xlab("Coefficients from No adjust EDU year") + 
+  ylab("Coefficients from Adjust EDU year") + 
+  ggtitle("ADNI Male coefficients of significant CpG (pval < 1E-05)")
+```
+
+```{r}
+ggsave(
+  file.path(dir.results, "MALE_ADNI_Adjust_edu_year_vs_ADNI_NO_adjust_edu_year.pdf"),
+  width = 8, 
+  height = 6
+)
+```
+
+
+#### pValues
+
+
+```{r}
+### all pvalues
+cor.test(
+  merge_df$pValue.bacon, 
+  merge_df$adjustEDU_pValue.bacon,
+  method = "spearman"
+)
+### significant pvalues
+cor.test(
+  merge_df.sig$pValue.bacon, 
+  merge_df.sig$adjustEDU_pValue.bacon,
+  method = "spearman"
+)
+```
+
+
+```{r echo = F}
+ggplot(merge_df, 
+       aes(x = -log10(pValue.bacon), y = -log10(adjustEDU_pValue.bacon))) + 
+  geom_point(size = 0.5) + theme_classic() +
+  stat_cor(method = "spearman", label.x = 0, label.y = 4) + 
+  xlab("-log10(pValues) from No adjust EDU year") + 
+  ylab("-log10(pValues) from adjust EDU year") + 
+  ggtitle("ADNI Male all CpGs pValues scatter plot")
+```
+
+
+
+```{r echo = F}
+ggplot(merge_df.sig, 
+       aes(x = -log10(pValue.bacon), y = -log10(adjustEDU_pValue.bacon))) + 
+  geom_point(size = 1) + theme_classic() +
+  stat_cor(method = "spearman", label.x = 0, label.y = 4) + 
+  geom_text_repel(aes(label = cpg), size = 2) +
+  xlab("-log10(pValues) from No adjust EDU year") + 
+  ylab("-log10(pValues) from adjust EDU year") + 
+  ggtitle("ADNI Male significant CpGs pValues scatter plot")
+```
+
+
+### Female
+
+```{r}
+Female.logistic_mixed_model_ad_cn.with.inflation <- readr::read_csv(
+    file.path(dir.results.glmm,"Females_ADNI_AD_vs_CN_glmm_using_beta_with_inflation.csv")
+)
+Female.logistic_mixed_model_ad_cn.with.inflation <- Female.logistic_mixed_model_ad_cn.with.inflation %>%
+  dplyr::select(
+    cpg, Estimate.bacon, pValue.bacon, fdr.bacon 
+  )
+Female.logistic_mixed_model_ad_cn.edu.with.inflation <- readr::read_csv(
+    file.path(dir.results.glmm,"Females_ADNI_AD_vs_CN_glmm_using_beta_adjust_edu_with_inflation.csv")
+)
+Female.logistic_mixed_model_ad_cn.edu.with.inflation <- Female.logistic_mixed_model_ad_cn.edu.with.inflation %>%
+  dplyr::select(
+    cpg, Estimate.bacon, pValue.bacon, fdr.bacon 
+  )
+colnames(Female.logistic_mixed_model_ad_cn.edu.with.inflation)[-1] <- 
+  paste0("adjustEDU_", colnames(Female.logistic_mixed_model_ad_cn.edu.with.inflation)[-1])
+merge_df <- left_join(
+  Female.logistic_mixed_model_ad_cn.with.inflation,
+  Female.logistic_mixed_model_ad_cn.edu.with.inflation
+)
+merge_df.sig <- merge_df %>% filter(
+  pValue.bacon < 1E-05 | adjustEDU_pValue.bacon < 1E-05
+)
+```
+
+#### Coefficients
+
+
+```{r}
+### all coefficients
+cor.test(
+  merge_df$Estimate.bacon, 
+  merge_df$adjustEDU_Estimate.bacon,
+  method = "spearman"
+)
+### significant coefficients
+cor.test(
+  merge_df.sig$Estimate.bacon, 
+  merge_df.sig$adjustEDU_Estimate.bacon,
+  method = "spearman"
+)
+```
+
+
+```{r echo = F}
+ggscatter(merge_df,
+          x = "Estimate.bacon", y = "adjustEDU_Estimate.bacon",
+          size = 0.1) + 
+  stat_cor(method = "spearman", label.x = -1, label.y = 1) + 
+  xlab("Coefficients from No adjust EDU year") + 
+  ylab("Coefficients from Adjust EDU year") + 
+  ggtitle("ADNI Female coefficients of all CpG")
+```
+
+```{r echo = F}
+ggscatter(merge_df.sig,
+          x = "Estimate.bacon", y = "adjustEDU_Estimate.bacon",
+          size = 1) + 
+  stat_cor(method = "spearman", label.x = -0.4, label.y = 0.5) + 
+  geom_text_repel(aes(label = cpg), size = 2) +
+  xlab("Coefficients from No adjust EDU year") + 
+  ylab("Coefficients from Adjust EDU year") + 
+  ggtitle("ADNI Female coefficients of significant CpG (pval < 1E-05)")
+```
+
+```{r}
+ggsave(
+  file.path(dir.results, "FEMALE_ADNI_Adjust_edu_year_vs_ADNI_NO_adjust_edu_year.pdf"),
+  width = 8, 
+  height = 6
+)
+```
+
+#### pValues
+
+
+```{r}
+### all pvalues
+cor.test(
+  merge_df$pValue.bacon, 
+  merge_df$adjustEDU_pValue.bacon,
+  method = "spearman"
+)
+### significant pvalues
+cor.test(
+  merge_df.sig$pValue.bacon, 
+  merge_df.sig$adjustEDU_pValue.bacon,
+  method = "spearman"
+)
+```
+
+
+```{r echo = F}
+ggplot(merge_df, 
+       aes(x = -log10(pValue.bacon), y = -log10(adjustEDU_pValue.bacon))) + 
+  geom_point(size = 0.5) + theme_classic() +
+  stat_cor(method = "spearman", label.x = 0, label.y = 4) + 
+  xlab("-log10(pValues) from No adjust EDU year") + 
+  ylab("-log10(pValues) from adjust EDU year") + 
+  ggtitle("ADNI Female all CpGs pValues scatter plot")
+```
+
+
+```{r echo = F}
+ggplot(merge_df.sig, 
+       aes(x = -log10(pValue.bacon), y = -log10(adjustEDU_pValue.bacon))) + 
+  geom_point(size = 1) + theme_classic() +
+  stat_cor(method = "spearman", label.x = 0, label.y = 4) + 
+  geom_text_repel(aes(label = cpg), size = 2) +
+  xlab("-log10(pValues) from No adjust EDU year") + 
+  ylab("-log10(pValues) from adjust EDU year") + 
+  ggtitle("ADNI Female significant CpGs pValues scatter plot")
+```
+
+## Education year vs AD Wilcoxon test
+
+
+```{R}
+pheno.cn.ad <- readr::read_csv(file.path(dir.data.processed,"ADNI_Se_colData_with_XY_AD_CN.csv"))
+pheno.cn.ad.last_visit <- pheno.cn.ad %>% 
+  group_by(RID) %>%
+  dplyr::slice(which.max(as.Date(DateDrawn, '%m/%d/%Y'))) %>%
+  mutate(DX0 = ifelse(DX == "Dementia", "AD", "CN"))
+pheno.cn.ad.first_visit <- pheno.cn.ad %>% 
+  group_by(RID) %>%
+  dplyr::slice(which.min(as.Date(DateDrawn, '%m/%d/%Y'))) 
+```
+
+
+```{r}
+## Male
+pheno.cn.ad.last_visit %>% filter(PTGENDER == 'Male') %>%
+  wilcox.test(
+    PTEDUCAT ~ DX,
+    data = .
+  )
+## Female
+pheno.cn.ad.last_visit %>% filter(PTGENDER == 'Female') %>%
+  wilcox.test(
+    PTEDUCAT ~ DX,
+    data = .
+  )
+```
+
+```{r}
+## Male
+pheno.cn.ad.first_visit %>% filter(PTGENDER == 'Male') %>%
+  wilcox.test(
+    PTEDUCAT ~ DX,
+    data = .
+  )
+## Female
+pheno.cn.ad.first_visit %>% filter(PTGENDER == 'Female') %>%
+  wilcox.test(
+    PTEDUCAT ~ DX,
+    data = .
+  )
+```
+
+
+```{r}
+ggboxplot(pheno.cn.ad.last_visit, x = "DX0", y = "PTEDUCAT",
+          facet.by = "PTGENDER", fill = "DX0", palette = "Blues",
+          title = "ADNI last visit education year vs AD")  + labs(fill = "DX", x = "DX") + 
+  geom_jitter(shape=16, size = 0.8, position=position_jitter(0.2)) +
+  stat_compare_means(method = 'wilcox.test', label.y.npc = 'bottom')
+```
+
+```{r eval = F}
+ggsave(
+  file.path(dir.results, "ADNI_last_visit_edu_year_vs_AD.pdf"),
+  width = 10, 
+  height = 6
+)
+```
+
+
+```{r}
+ggboxplot(pheno.cn.ad.first_visit, x = "DX", y = "PTEDUCAT",
+          facet.by = "PTGENDER", fill = "DX", palette = "Blues",
+          title = "ADNI first visit education year vs AD") +
+  geom_jitter(shape=16, size = 0.8, position=position_jitter(0.2)) +
+  stat_compare_means(method = 'wilcox.test', label.y.npc = 'bottom')
+```
+
+# Session information
+```{R}
+devtools::session_info()
+```

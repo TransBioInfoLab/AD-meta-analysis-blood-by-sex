@@ -1,0 +1,690 @@
+---
+title: "AddNeuroMed dataset"
+author: "Tiago C. Silva, Lanyu Zhang, Lily Wang"
+date: "`r Sys.Date()`"
+output:
+  rmarkdown::html_document:
+    highlight: breezedark
+    theme: lumen
+    toc: true
+    number_sections: true
+    df_print: paged
+    code_download: false
+    toc_float:
+      collapsed: yes
+    toc_depth: 3
+editor_options:
+  chunk_output_type: inline    
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,warning = FALSE)
+knitr::opts_knit$set(root.dir = "./../../")
+```
+
+# Setup
+
+```{R, message = FALSE, results = 'hide'}
+library(dplyr)
+library(SummarizedExperiment)
+library(ExperimentHub)
+cohort <- "AddNeuroMed"
+dir.base <- "~/TBL Dropbox/Tiago Silva//AD-meta-analysis-blood-samples/"
+dir.data <- file.path(dir.base,"datasets/",cohort,"/") 
+dir.data.aux <- file.path(dir.base,"datasets/Aux/") 
+dir.data.raw <- file.path(dir.data,"/step1_download/") 
+dir.data.processed <- file.path(dir.data,"/step2_processed/") 
+dir.data.pca <- file.path(dir.data,"/step3_pca_filtering/") 
+dir.results <- file.path(dir.base,"analysis_results",cohort)
+for(p in grep("dir",ls(),value = T)) dir.create(get(p),recursive = TRUE,showWarnings = FALSE)
+```
+
+
+# Data retrieval
+
+```{R, load_rgset_bs_filtered_min_65, include = FALSE, eval = FALSE}
+load(file.path(dir.data.raw,"addNeuroMed_se_non_normalized.rda"))
+nb.samples.male <- sum(addNeuroMed$Sex.ch1 == "Male")
+nb.samples.female <- sum(addNeuroMed$Sex.ch1 == "Female")
+
+
+addNeuroMed <- addNeuroMed[,addNeuroMed$age.65.exclusion.ch1 == "Included"]
+nb.samples.age.65.exclusion <- ncol(addNeuroMed)
+addNeuroMed$age.ch1 <-  as.numeric(addNeuroMed$age.ch1)
+nb.samples.age.65.exclusion.male <- sum(addNeuroMed$Sex.ch1 == "Male")
+nb.samples.age.65.exclusion.female <- sum(addNeuroMed$Sex.ch1 == "Female")
+
+```
+
+```{R, load_bs_filtered_min_65, include = FALSE, eval = FALSE}
+addNeuroMed.se <- readRDS(file.path(dir.data.pca, "addNeuroMed_QNBMIQ_PCfiltered.RDS"))
+
+nb.samples.after.pca.female <-  sum(addNeuroMed.se$Sex.ch1 == "Female")
+nb.samples.after.pca.female.ad.cn <-  sum(addNeuroMed.se$Sex.ch1 == "Female" & addNeuroMed.se$disease.state.ch1 != "mild cognitive impairment")
+
+nb.samples.after.pca.male <- sum(addNeuroMed.se$Sex.ch1 == "Male")
+nb.samples.after.pca.male.ad.cn <-  sum(addNeuroMed.se$Sex.ch1 == "Male" & addNeuroMed.se$disease.state.ch1 != "mild cognitive impairment")
+
+```
+
+## Probes QC
+
+1. keep only probes that start with "cg"
+2. drop probes that are on X/Y
+3. drop probes where SNP with MAF >= 0.01 was present in the last 5 bp of the probe.
+4. Remove smoking related probes
+
+```{R, eval = FALSE}
+library(minfi)
+library(wateRmelon)
+library(RPMM)
+library(DMRcate)
+```
+
+```{R, eval = FALSE}
+annotation <- sesameDataGet("HM450.hg19.manifest") %>% as.data.frame %>% dplyr::filter(seqnames %in% c("chrX","chrY"))
+betaSetXY <- addNeuroMed[rownames(addNeuroMed) %in% rownames(annotation), ]
+nb.chrXY.probes <- nrow(betaSetXY)
+
+betaSetXY <- betaSetXY[grep("cg",rownames(betaSetXY)),]
+nb.chrXY.cg.probes <- nrow(betaSetXY)
+
+# nrow(betaSetXY)
+# 9623
+
+gc()
+
+# snapshotDate(): 2021-03-30
+betaSetXY <- rmSNPandCH(
+  object = assay(betaSetXY),
+  dist = 5,
+  mafcut = 0.01,
+  and = TRUE,
+  rmcrosshyb = TRUE,
+  rmXY = FALSE
+)
+```
+
+```{R, include = F}
+# dim(betaSetXY)
+#  9546  284
+```
+## Remove smoking probes
+
+```{R, eval = FALSE}
+smoking.file <- "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5267325/bin/NIHMS817273-supplement-001506_-_Supplemental_Tables.xlsx"
+if(!file.exists(file.path(dir.data.aux,basename(smoking.file)))) {
+  downloader::download(smoking.file,file.path(dir.data.aux,basename(smoking.file)))
+}
+smoking <- readxl::read_xlsx(
+  file.path(dir.data.aux,basename(smoking.file)),
+  sheet = "02",
+  skip = 2
+)
+smoking.sig.probes <- smoking %>%
+  dplyr::filter(`P-value` < 1*10^(-7)) %>%
+  dplyr::pull("Probe ID")
+
+betaSetXY <- betaSetXY[!rownames(betaSetXY) %in% smoking.sig.probes,]
+```
+
+```{R, include = F}
+# dim(betaSetXY)
+#  9541  284
+```
+
+
+## Merge DNA methylation matrix on autosome with the one on chrX, chrY
+
+```{R, eval = FALSE}
+betaSetXY <- betaSetXY[,colnames(addNeuroMed.se)]
+identical(colnames(addNeuroMed.se), colnames(betaSetXY))
+betaQN_BMIQ <- rbind(assay(addNeuroMed.se), betaSetXY)
+table(base::duplicated(row.names(betaQN_BMIQ)))
+clinical.filtered.min.age_at_visit.65 <- colData(addNeuroMed.se)
+# 401590
+save(
+  betaQN_BMIQ,
+  clinical.filtered.min.age_at_visit.65,
+  file = file.path(dir.data.processed,"RGSet_bs_filtered_min_age_at_visit_65_with_XY.rda")
+)
+```
+
+### Summarize Experiment
+
+```{R, eval = FALSE}
+betaQN_BMIQ <- betaQN_BMIQ[
+  rownames(betaQN_BMIQ) %in% rownames(IlluminaHumanMethylation450kanno.ilmn12.hg19::Locations),
+]
+
+assay <- S4Vectors::SimpleList("DNAm" = betaQN_BMIQ)
+
+samples.info <- colData(addNeuroMed.se)
+
+
+rowData <- IlluminaHumanMethylation450kanno.ilmn12.hg19::Locations[rownames(betaQN_BMIQ),] %>%
+  GenomicRanges::makeGRangesFromDataFrame(start.field = "pos",end.field = "pos")
+
+
+addNeuroMed.se <- SummarizedExperiment::SummarizedExperiment(
+  assays = assay,
+  rowData = rowData,
+  metadata = list("genome" = "hg19"),
+  colData = samples.info
+)
+
+saveRDS(addNeuroMed.se, file = file.path(dir.data.processed,"addNeuroMed_se_withXY.rds")) # 401590 280
+readr::write_csv(samples.info %>% as.data.frame, file = file.path(dir.data.processed,"samples.info_withXY.csv"))
+```
+
+
+# Summary after QC steps
+
+
+```{R, eval = FALSE}
+addNeuroMed.se <- readRDS(file.path(dir.data.processed,"addNeuroMed_se_withXY.rds"))
+addNeuroMed.se <- addNeuroMed.se[,addNeuroMed.se$disease.state.ch1 %in% c("Alzheimer's disease" ,"control")]
+pheno_df <- colData(addNeuroMed.se) %>% as.data.frame
+nb.samples.before.pca.male <- sum(pheno_df$Sex.ch1 == "Female")
+nb.samples.before.pca.female <- sum(pheno_df$Sex.ch1 == "Male")
+```
+
+## Data and metadata
+```{R}
+addNeuroMed.se <- readRDS(file.path(dir.data.processed,"addNeuroMed_se_withXY.rds"))
+addNeuroMed.se <- addNeuroMed.se[,addNeuroMed.se$disease.state.ch1 %in% c("Alzheimer's disease" ,"control")]
+nb.samples.after.pca <- ncol(addNeuroMed.se)
+nb.probes.after.norm <- nrow(addNeuroMed.se)
+```
+
+
+
+```{R}
+pheno.cn.ad <- colData(addNeuroMed.se)
+pheno.cn.ad.female <- pheno.cn.ad[pheno.cn.ad$Sex.ch1 == "Female" & pheno.cn.ad$disease.state.ch1 %in% c("Alzheimer's disease" ,"control"),]
+nb.samples.after.pca.female <- nrow(pheno.cn.ad.female)
+plyr::count(pheno.cn.ad.female$DX)
+```
+
+```{R}
+pheno.cn.ad.male <- pheno.cn.ad[pheno.cn.ad$Sex.ch1 == "Male" & pheno.cn.ad$disease.state.ch1 %in% c("Alzheimer's disease" ,"control"),]
+plyr::count(pheno.cn.ad.male$DX)
+nb.samples.after.pca.male <- nrow(pheno.cn.ad.male)
+```
+
+
+# Summary after QC steps
+
+## Data and metadata
+```{R}
+betaQN_BMIQ_PCfiltered <- readRDS(file.path(dir.data.processed, "addNeuroMed_se_withXY.rds"))
+nb.samples.after.pca <- ncol(betaQN_BMIQ_PCfiltered)
+```
+
+```{R, echo = FALSE}
+pheno <- colData(betaQN_BMIQ_PCfiltered) 
+pheno <- pheno %>% as.data.frame %>% dplyr::select(
+  c(disease.state.ch1, Sex.ch1, age.ch1, 
+    B, NK,   CD4T, CD8T,   Mono, Neutro, Eosino
+  )
+)
+
+pheno %>% str()
+
+pheno %>%
+  DT::datatable(
+    filter = 'top',
+    style = "bootstrap",
+    extensions = 'Buttons',
+    options = list(
+      scrollX = TRUE, 
+      dom = 'Bfrtip',
+      buttons = I('colvis'),
+      keys = TRUE, 
+      pageLength = 10
+    ), 
+    rownames = FALSE,
+    caption = "Samples metadata"
+  )
+```
+
+
+
+
+
+## Numbers of samples and probes removed in each step
+
+### Female
+```{R, eval = FALSE, echo=FALSE, include = F}
+df.samples <- data.frame(
+  "Number of samples" =  c(
+    nb.samples.age.65.exclusion.female, 
+    nb.samples.after.pca.female
+  ),
+  "Description" = c(
+    "Number of FEMALE samples before preprocessing",
+    "Number of FEMALE samples after PCA"
+  )
+)    
+df.samples 
+```
+
+### Male
+```{R, eval = FALSE, echo=FALSE, include = F}
+df.samples <- data.frame(
+  "Number of samples" =  c(
+    nb.samples.age.65.exclusion.male, 
+    nb.samples.after.pca.male
+  ),
+  "Description" = c(
+    "Number of MALE samples before preprocessing",
+    "Number of MALE samples after PCA"
+  )
+)    
+df.samples 
+```
+
+
+```{R, eval = FALSE, echo=FALSE, include = F}
+# Create summary table
+df.probes <- data.frame(
+  "Number of probes" = c(
+    nb.probes.before.norm,
+    nb.probes.after.norm
+  ),
+  "Description" = c(
+    "total number of probes in raw data",
+    "only probes that start with cg, no crosshyb, no smoking, mafcut = 0.01"
+  )
+)
+df.probes %>% gt::gt() 
+```
+
+
+# Checking the data
+
+```{R checking_part1}
+se <- readRDS(file.path(dir.data.processed, "addNeuroMed_se_withXY.rds"))
+```
+
+
+## show probes not starting with cg are removed
+```{R checking_cg}
+grep("cg",rownames(se), invert = T)
+```
+
+## show probes on X/Y are not removed
+```{R checking_XY}
+c("chrX", "chrY") %in% (seqnames(se) %>% as.character())
+```
+
+## show probes with SNP with MAF >= 0.01 and in the last 5bp were removed (compared with DMRcateData package probes)
+```{R checking_maf}
+eh <- ExperimentHub()
+snpsall <- eh[["EH3130"]]
+any(snpsall$probe[snpsall$mafs > 0.01 & snpsall$distances <= 5] %>% as.character() %in% rownames(se)) 
+crosshyb <- eh[["EH3129"]]
+any(crosshyb %in% rownames(se))
+XY.probes <- eh[["EH3131"]]
+any(XY.probes %in% rownames(se)) 
+```
+
+## select a few smoking probes, and show they are removed
+```{R checking_smoking}
+any(
+  c("cg16145216", "cg19406367",
+    "cg05603985", "cg10768063",
+    "cg14099685", "cg12513616",
+    "cg04085571", "cg23648810"
+  ) %in% rownames(se)
+)
+```
+
+## show quantiles for each sample is the same
+```{R checking_quantiles}
+boxplot(assay(se[,1:10]))
+plyr::adply(assay(se[,1:10]),.margins = 2,.fun = function(x){quantile(x)})
+```
+
+
+## check cell type proportions adds up to 1
+```{R checking_cell_type_proportion}
+table(rowSums(colData(se)[,c("B","NK","CD4T","CD8T","Mono","Neutro","Eosino")] %>% as.matrix()))
+```
+
+## check outliers samples are not in datset anymore
+```{R checking_outliers}
+outliers <- readr::read_csv(paste0(dir.data.pca, "addNeuroMed_PCs_usingBetas.csv"),col_types = readr::cols()) %>%
+  dplyr::filter(outlier_PC1 == 1 | outlier_PC2 == 1) %>% pull(X1) 
+head(outliers)
+head(colnames(se))
+any(outliers %in% colnames(se))
+```
+
+## for one sample, check distribution of type I and type II probes
+```{R checking_part_probes_types, eval = TRUE}
+library(sm)
+
+annotType <- IlluminaHumanMethylation450kanno.ilmn12.hg19::Manifest
+annotType$designTypeNumeric <- ifelse(annotType$Type == "I",1,2)
+probes <- assay(se)[,1] %>% na.omit()
+sm.density.compare(
+  probes,
+  annotType[names(probes),]$designTypeNumeric
+)
+
+probes <- assay(se)[,2] %>% na.omit()
+sm.density.compare(
+  probes,
+  annotType[names(probes),]$designTypeNumeric
+)
+```
+
+
+```{R checking_part5, include = FALSE}
+rm(se)
+```
+
+# Analysis
+
+```{R analysis_data}
+addNeuroMed.se <- readRDS(file.path(dir.data.pca, "addNeuroMed_se_withXY.rds"))
+mvalues <- log2(assay(addNeuroMed.se)/(1 - assay(addNeuroMed.se)))
+
+#  0 = control, 1 = AD, 2 = MCI
+pheno <- data.frame(colData (addNeuroMed.se))
+pheno$DIAGNOSIS <- factor(pheno$disease.state.ch1, levels = c("control", "mild cognitive impairment", "Alzheimer's disease"))
+pheno$barcodes <- row.names(pheno)
+pheno$Sex <- factor(pheno$Sex.ch1)
+pheno <- pheno %>% dplyr::select(
+  c(barcodes, Sex, age.ch1, 
+    DIAGNOSIS, 
+    B, NK,   CD4T, CD8T,   Mono, Neutro, Eosino
+  )
+)
+```
+
+## Metadata structure
+```{R}
+str(pheno)
+```
+
+## Number of samples
+```{R}
+plyr::count(pheno$DIAGNOSIS)
+```
+
+```{R analysis_data_part2, eval = FALSE}
+mvalues <- mvalues[, pheno$barcodes]
+
+pheno.cn.ad <- pheno[pheno$DIAGNOSIS %in% c("control", "Alzheimer's disease"),]
+pheno.cn.ad$DIAGNOSIS <-  forcats::fct_drop(pheno.cn.ad$DIAGNOSIS)
+pheno.cn.ad.male <- pheno[pheno$Sex %in% "Male",]
+pheno.cn.ad.female <- pheno[pheno$Sex %in% "Female",]
+
+
+mvalues.cn.ad.male <- mvalues[, pheno.cn.ad.male$barcodes]
+mvalues.cn.ad.female <- mvalues[, pheno.cn.ad.female$barcodes]
+
+rm(mvalues)
+gc()
+```
+
+
+```{R analysis, eval = FALSE}
+doParallel::registerDoParallel(cores = 4)
+
+message("o Stating analysis - AD vs CN - MALE")
+results.ad.male <- plyr::adply(
+  .data = mvalues.cn.ad.male, 
+  .margins = 1,
+  .fun = function(one){
+    dat.cn.ad <- data.frame (mval = one, pheno.cn.ad.male)
+    tryCatch({
+      suppressMessages({
+        f <- lm(
+          mval ~ DIAGNOSIS + age.ch1 + B + NK + CD4T + CD8T + Mono + Neutro,
+          dat.cn.ad
+        )
+        lmer_ad_cn <- coef(summary(f)) [grep("DIAGNOSIS",rownames(coef(summary(f)) ),value = TRUE),]
+      })
+      return(lmer_ad_cn)
+    }, error = function(e) {message(e);return(NULL)})
+  },.parallel = TRUE, .progress = "time",.id = "cpg",.inform = FALSE
+)
+
+readr::write_csv(
+  x = results.ad.male, 
+  file = file.path(dir.results,"MALE_addNeuroMed_AD_vs_CN_results_with_blood_cell_type_proportions.csv")
+)
+
+doParallel::registerDoParallel(cores = 4)
+
+message("o Stating analysis - AD vs CN - MALE")
+results.ad.female <- plyr::adply(
+  .data = mvalues.cn.ad.female, 
+  .margins = 1,
+  .fun = function(one){
+    dat.cn.ad <- data.frame (mval = one, pheno.cn.ad.female)
+    tryCatch({
+      suppressMessages({
+        f <- lm(
+          mval ~ DIAGNOSIS + age.ch1 + B + NK + CD4T + CD8T + Mono + Neutro,
+          dat.cn.ad
+        )
+        lmer_ad_cn <- coef(summary(f)) [grep("DIAGNOSIS",rownames(coef(summary(f)) ),value = TRUE),]
+      })
+      return(lmer_ad_cn)
+    }, error = function(e) {message(e);return(NULL)})
+  },.parallel = TRUE, .progress = "time",.id = "cpg",.inform = FALSE
+)
+
+readr::write_csv(
+  x = results.ad.female, 
+  file = file.path(dir.results,"FEMALE_addNeuroMed_AD_vs_CN_results_with_blood_cell_type_proportions.csv")
+)
+```
+
+
+## Annotate results
+```{R annotate, eval = FALSE}
+message("o Stating to annotate")
+addNeuroMed.se <- readRDS(file.path(dir.data.pca, "addNeuroMed_se_withXY.rds"))
+load(file.path(dir.data.aux,"great_EPIC_array_annotation.rda"))
+load(file.path(dir.data.aux,"E073_15_coreMarks_segments.rda"))
+load(file.path(dir.data.aux,"meta_analysis_cpgs.rda"))
+
+annotate_results <- function(result, data.se){
+  result$fdr <- p.adjust(result$`Pr(>|t|)`,method = "fdr")
+  result <- cbind(
+    result,
+    rowRanges(data.se)[result$cpg] %>% as.data.frame() %>% dplyr::select(1:4)
+  )
+  result$Islands.UCSC.Relation_to_Island <- IlluminaHumanMethylation450kanno.ilmn12.hg19::Islands.UCSC[result$cpg,"Relation_to_Island"]
+  result$UCSC_RefGene_Name <- IlluminaHumanMethylation450kanno.ilmn12.hg19::Other[result$cpg,"UCSC_RefGene_Name"]       
+  result$UCSC_RefGene_Group <- IlluminaHumanMethylation450kanno.ilmn12.hg19::Other[result$cpg,"UCSC_RefGene_Group"]     
+  
+  result <- dplyr::left_join(result, great,by = c("seqnames","start","end","cpg"))
+  
+  hits <- findOverlaps(rowRanges(data.se)[result$cpg],ChmmModels.gr) %>% as.data.frame()
+  hits$state <- ChmmModels.gr$state[hits$subjectHits]
+  hits$cpg <- result$cpg[hits$queryHits]
+  result <- merge(result, hits[,c("state","cpg")], all.x = TRUE,sort = FALSE, by = "cpg")
+  
+  # sig.in.brain: 1 if it overlaps with the 3751 CpGs or 119 DMRs from our brain samples meta-analysis
+  result$sig.in.brain <- result$cpg %in% brain.meta.analysis.cpgs
+  return(result)
+}
+
+colnames(results.ad.male)[1] <- "cpg"
+results.ad.annotated.male <- results.ad.male %>% annotate_results(addNeuroMed.se)
+readr::write_csv(
+  x = results.ad.annotated.male,
+  file = file.path(dir.results,"MALE_addNeuroMed_AD_vs_CN_results_with_blood_cell_type_proportions_annotated.csv")
+)
+
+
+
+colnames(results.ad.female)[1] <- "cpg"
+results.ad.annotated.female <- results.ad.female %>% annotate_results(addNeuroMed.se)
+readr::write_csv(
+  x = results.ad.annotated.female,
+  file = file.path(dir.results,"FEMALE_addNeuroMed_AD_vs_CN_results_with_blood_cell_type_proportions_annotated.csv")
+)
+```
+
+```{R read_results, include = FALSE}
+results.ad.female <- readr::read_csv(
+  file.path(dir.results,"FEMALE_addNeuroMed_AD_vs_CN_results_with_blood_cell_type_proportions_annotated.csv")
+)
+results.ad.male <- readr::read_csv(
+  file.path(dir.results,"MALE_addNeuroMed_AD_vs_CN_results_with_blood_cell_type_proportions_annotated.csv")
+)
+```
+
+# Calculate inflation factors and Bacon correction for final results
+
+```{R, message = FALSE, warning = FALSE, result = "hide"}
+library(dplyr)
+library(bacon)
+library(GWASTools)
+```
+
+## Auxiliary function
+
+```{R inflation}
+estimation_of_inflation <- function(data){
+  ### 1. Compute genomic inflation factor before bacon adjustment
+  data$zvalue <- data$Estimate / data$`Std. Error`
+  #data$zvalue <- qnorm(pt(data$tvalue, df))
+  data$chisq <- (data$zvalue) ^ 2
+  # inflation factor - last term is median from chisq distrn with 1 df  
+  inflationFactor <- median(data$chisq,na.rm = TRUE) / qchisq(0.5, 1)
+  print("lambda")
+  print(inflationFactor)
+  # genome-wide sig cpgs
+  #sig <- ifelse(data$`Pr(>|t|)` < 2.4e-7, 1, 0)
+  # table(sig)  # 1 sig
+  ### 2. bacon analysis
+  bc <- bacon(
+    teststatistics = NULL,
+    effectsizes =  data$Estimate,
+    standarderrors = data$`Std. Error`,
+    na.exclude = TRUE
+  )
+  # inflation factor
+  print("lambda.bacon")
+  print(inflation(bc))
+  
+  
+  percent_null <- trunc ( estimates(bc)[1]*100, digits = 0)
+  percent_1  <- trunc ( estimates(bc)[2]*100, digits = 0 )
+  percent_2  <- 100 - percent_null - percent_1  
+  bc2 <- bacon(
+    teststatistics = NULL,
+    effectsizes =  data.with.inflation$Estimate.bacon,
+    standarderrors = data.with.inflation$StdErr.bacon,
+    na.exclude = TRUE, 
+    priors = list(
+      sigma = list(alpha = 1.28,  beta = 0.36), 
+      mu = list(lambda = c(0, 3, -3), tau = c(1000, 100, 100)), 
+      epsilon = list(gamma = c(percent_null, percent_1, percent_2)))
+  )
+  print("inflation")
+  print(inflation(bc2))
+  print("estimates")
+  print(estimates(bc2))
+  
+  ### 3. Create final dataset
+  data.with.inflation <- data.frame(
+    data,
+    Estimate.bacon = bacon::es(bc),
+    StdErr.bacon = bacon::se(bc),
+    pValue.bacon = pval(bc),
+    fdr.bacon = p.adjust(pval(bc), method = "fdr"),
+    stringsAsFactors = FALSE
+  )
+  
+  data.with.inflation <- data.with.inflation %>% dplyr::select(-c(zvalue, chisq))
+  return(
+    list(
+      "data.with.inflation" = data.with.inflation,
+      "inflationFactor" =   inflationFactor,
+      "estimatedInflation" = inflation(bc)
+    )
+  )
+}
+```
+
+
+
+```{R estimation_of_inflation_ad}
+results.ad.with.inflation.female <- estimation_of_inflation(data = results.ad.female)
+
+readr::write_csv(
+  x = results.ad.with.inflation.female$data.with.inflation,
+  file = file.path(dir.results,"MALE_addNeuroMed_AD_vs_CN_results_with_blood_cell_type_proportions_and_SVA_annotated_with_inflation.csv")
+)
+
+
+qqPlot(
+  results.ad.with.inflation.female$data.with.inflation$Pr...t.., ci = TRUE, 
+  main = paste0(cohort, " cohort")
+) + text(
+  x = 0.5, 
+  y = 5,
+  labels = bquote(lambda == .(format(results.ad.with.inflation.female$inflationFactor,digits = 4))),
+  pos = 4
+) + text(
+  x = 0.5, 
+  y = 4,
+  labels = bquote(lambda[bacon] == .(format(results.ad.with.inflation.female$estimatedInflation,digits = 4))),
+  pos = 4
+)
+```
+
+```{R estimation_of_inflation_ad}
+results.ad.with.inflation.male <- estimation_of_inflation(data = results.ad.male)
+
+readr::write_csv(
+  x = results.ad.with.inflation.male$data.with.inflation,
+  file = file.path(dir.results,"MALE_addNeuroMed_AD_vs_CN_results_with_blood_cell_type_proportions_and_SVA_annotated_with_inflation.csv")
+)
+
+
+qqPlot(
+  results.ad.with.inflation.male$data.with.inflation$Pr...t.., ci = TRUE, 
+  main = paste0(cohort, " cohort")
+) + text(
+  x = 0.5, 
+  y = 5,
+  labels = bquote(lambda == .(format(results.ad.with.inflation.male$inflationFactor,digits = 4))),
+  pos = 4
+) + text(
+  x = 0.5, 
+  y = 4,
+  labels = bquote(lambda[bacon] == .(format(results.ad.with.inflation.male$estimatedInflation,digits = 4))),
+  pos = 4
+)
+```
+
+# Venn diagram 
+## Significant cpgs (with bacon pvalue <1E-5) 
+
+```{R venn_bacon, fig.width = 8, fig.height = 8}
+library(RVenn)
+
+list <-  list(
+  "\nMALE AD vs CN\n(Bacon p-values < 1E-5)" = results.ad.with.inflation.male$data.with.inflation$cpg[results.ad.with.inflation.male$data.with.inflation$pValue.bacon < 1E-5],
+  "\FEMALE AD vs CN\n(Bacon p-values < 1E-5)" = results.ad.with.inflation.female$data.with.inflation$cpg[results.ad.with.inflation.female$data.with.inflation$pValue.bacon < 1E-5]
+)
+venn <- Venn(list)
+p <- ggvenn(venn, fill = c("darkgreen","gold")) + theme_void() + guides(fill = FALSE)
+print(p, vp=grid::viewport(gp=grid::gpar(cex = 0.4)))
+```
+
+
+# Session information
+```{R}
+devtools::session_info()
+```

@@ -1,0 +1,1567 @@
+---
+title: "Integrative meta-analysis of epigenome-wide association studies identifies genomic and epigenomics differences in the brain and the blood in Alzheimer’s disease"
+subtitle: 'Validation of prioritized CpGs using external dataset'
+author:
+  - Tiago Chedraoui Silva^[University of Miami]
+  - Wei Zhang^[University of Miami]
+  - Lily Wang^[University of Miami]
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output:
+  rmarkdown::html_document:
+    highlight: breezedark
+    theme: lumen
+    toc: true
+    number_sections: true
+    df_print: paged
+    code_download: false
+    toc_float:
+      collapsed: yes
+    toc_depth: 3
+editor_options:
+  chunk_output_type: inline    
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,warning = FALSE)
+# - use AddNeuroMed as external sample
+# - use both significant individual CpGs and CpGs from DMRs
+# - same analysis we did for all samples, except by males and females
+```
+
+# Libraries
+
+```{R message=FALSE, warning=FALSE, results="hide"}
+library(readr)
+library(dplyr)
+library(msigdbr)
+library(SummarizedExperiment)
+library(tidyverse)
+library(caret)
+library(factoextra)
+library(pROC)
+library(minfi)
+source("~/TBL Dropbox/Wei Zhang/AD-meta-analysis-blood-samples/code/DNAm-based-age-predictor/pred.R")
+```
+
+# Select CpGs
+
+## Individual CpGs
+
+```{R}
+#-----------------------------------------------------------------------------
+# Select cpgs
+#-----------------------------------------------------------------------------
+# FEMALE CpGs with P<1E- 5 in AD vs. CN comparison
+sig.cpgs.females <- readxl::read_xlsx("~/TBL Dropbox/Wei Zhang/AD-meta-analysis-blood-samples-bySex/DRAFT-FIGURES-TABLES-REVISION_7-1-2022/Supp Table 2 sig_female_male_cpgs_AD_vs_CN_updated_final_LWedit.xlsx",skip = 3,n_max = 24)
+sig.cpgs.females <- sig.cpgs.females[-1,]
+header <- colnames(sig.cpgs.females)
+sig.cpgs.females <- sig.cpgs.females$cpg
+length(sig.cpgs.females)
+
+
+# MALE CpGs with P<1E- 5 in AD vs. CN comparison
+#sig.cpgs.males <- readxl::read_xlsx("~/TBL Dropbox/Wei Zhang/AD-meta-analysis-blood-samples-bySex/DRAFT-FIGURES-TABLES-REVISION_7-1-2022/Supp Table 2 sig_female_male_cpgs_AD_vs_CN_updated_final_LWedit.xlsx", skip = 29)
+#colnames(sig.cpgs.males) <- header
+#sig.cpgs.males <- sig.cpgs.males$cpg
+#length(sig.cpgs.males)
+
+sig.cpgs.males <- read_csv(
+  "~/TBL Dropbox/Wei Zhang/AD-meta-analysis-blood-samples-bySex/analysis_results/meta_analysis/Logistic_regression_model/withSmokePrbs/AD_vs_CN/MALE_meta_analysis_glm_fixed_effect_ADNI_and_AIBL_AD_vs_CN_single_cpg_annotated.csv"
+)
+sig.cpgs.males <- sig.cpgs.males %>% arrange(pVal.final.bacon) 
+sig.cpgs.males <- sig.cpgs.males[c(1:9),]
+sig.cpgs.males <- sig.cpgs.males$cpg
+length(sig.cpgs.males)
+```
+
+## DMRs from comb-p
+
+```{R}
+#-----------------------------------------------------------------------------
+# Select DMRs
+#-----------------------------------------------------------------------------
+sig.dmr.males <- readxl::read_xlsx(file.path("~/TBL Dropbox/Tiago Silva/AD-meta-analysis-blood-samples-bySex/Michale/male_dist750/cnew.regions-p.bed_annotated.xlsx"))
+sig.cpgs.in.dmr.males <- sig.dmr.males$cpgs_in_region %>% stringr::str_split(",") %>% unlist %>% unique()
+length(sig.cpgs.in.dmr.males)
+
+sig.dmr.females <- readxl::read_xlsx(file.path("~/TBL Dropbox/Tiago Silva/AD-meta-analysis-blood-samples-bySex/Michale/female_dist750/cnew.regions-p.bed_annotated.xlsx"))
+sig.cpgs.in.dmr.females <- sig.dmr.females$cpgs_in_region %>% stringr::str_split(",") %>% unlist %>% unique()
+length(sig.cpgs.in.dmr.females)
+```
+
+
+## Cross-tissue CpGs 
+
+### Males
+```{R}
+#-----------------------------------------------------------------------------
+# Select DMRs
+#-----------------------------------------------------------------------------
+cross.cpgs.males <- readr::read_csv(file.path("~/TBL Dropbox/Wei Zhang/AD-meta-analysis-blood-samples-bySex/analysis_results/cross_meta_analysis/withSmoke/MALE_cross_tissue_meta_analysis_glm_using_AD_vs_CN_single_cpg_annotated.csv")
+) %>% dplyr::filter(p < 10^-5  & valid_p == 6)
+
+blood.meta_analysis.male <- readr::read_csv(
+  "~/TBL Dropbox/Wei Zhang/AD-meta-analysis-blood-samples-bySex/analysis_results/meta_analysis/Logistic_regression_model/withSmokePrbs/AD_vs_CN/MALE_meta_analysis_glm_fixed_effect_ADNI_and_AIBL_AD_vs_CN_single_cpg_annotated.csv"
+)
+blood.meta_analysis.male <- blood.meta_analysis.male[,grep("Brain_sex_meta_analysis_Brain_sex_meta_analysis",colnames(blood.meta_analysis.male),invert = T)]
+
+brain.meta_analysis.male <- readr::read_csv(
+  "~/TBL Dropbox/Wei Zhang/AD_metaAnalysis_bySex/meta_analysis_single_cpg_results/single_cpg_male_meta_bacon_annot_df.csv"
+)
+
+table(cross.cpgs.males %in% blood.meta_analysis.male$cpg[blood.meta_analysis.male$pVal.final.bacon < 0.05])
+
+sig.cpgs.in.meta.male <- intersect(brain.meta_analysis.male$cpg[brain.meta_analysis.male$pVal.final < 0.05],blood.meta_analysis.male$cpg[blood.meta_analysis.male$pVal.final.bacon < 0.05])
+table(cross.cpgs.males$cpg %in% sig.cpgs.in.meta.male)
+
+sig.cross.cpgs.males <- intersect(cross.cpgs.males$cpg,sig.cpgs.in.meta.male)
+length(sig.cross.cpgs.males)
+```
+
+### Females
+```{R}
+
+cross.cpgs.females <- readr::read_csv(file.path("~/TBL Dropbox/Wei Zhang/AD-meta-analysis-blood-samples-bySex/analysis_results/cross_meta_analysis/withSmoke/FEMALE_cross_tissue_meta_analysis_glm_using_AD_vs_CN_single_cpg_with_NA_in_blood_or_brain_annotated.csv")
+) %>% dplyr::filter(p < 10^-5 & valid_p == 6)
+
+
+blood.meta_analysis.female <- readr::read_csv(
+  "~/TBL Dropbox/Wei Zhang/AD-meta-analysis-blood-samples-bySex/analysis_results/meta_analysis/Logistic_regression_model/withSmokePrbs/AD_vs_CN/FEMALE_meta_analysis_glm_fixed_effect_ADNI_and_AIBL_AD_vs_CN_single_cpg_annotated.csv"
+)
+blood.meta_analysis.female <- blood.meta_analysis.female[,grep("Brain_sex_meta_analysis_",colnames(blood.meta_analysis.female),invert = T)]
+
+brain.meta_analysis.female <- readr::read_csv(
+  "~/TBL Dropbox/Wei Zhang/AD_metaAnalysis_bySex/meta_analysis_single_cpg_results/single_cpg_female_meta_bacon_annot_df.csv"
+)
+
+sig.cpgs.in.meta.female <- intersect(brain.meta_analysis.female$cpg[brain.meta_analysis.female$pVal.final < 0.05],blood.meta_analysis.female$cpg[blood.meta_analysis.female$pVal.final.bacon < 0.05])
+table(cross.cpgs.females$cpg %in% sig.cpgs.in.meta.female)
+sig.cross.cpgs.females <- intersect(cross.cpgs.females$cpg,sig.cpgs.in.meta.female)
+length(sig.cross.cpgs.females)
+```
+
+
+## single cpg results
+
+```{R}
+dir.base <- "~/TBL Dropbox/Wei Zhang/AD-meta-analysis-blood-samples-bySex"
+dir.results <- file.path(dir.base,"analysis_results")
+dir.result.meta.analysis <- file.path(dir.results, "meta_analysis/Logistic_regression_model/withSmokePrbs")
+dir.result.meta.analysis.ad <- file.path(dir.result.meta.analysis, "AD_vs_CN/")
+
+# data for comb-p
+meta_df_AD_vs_CN.annotated.male <- readr::read_csv(
+  file = paste0(
+    dir.result.meta.analysis.ad,
+    "MALE_meta_analysis_glm_fixed_effect_ADNI_and_AIBL_AD_vs_CN_single_cpg_annotated.csv"
+  )
+) %>% as.data.frame()
+
+meta_df_AD_vs_CN.annotated.female <- readr::read_csv(
+  file = paste0(
+    dir.result.meta.analysis.ad,
+    "FEMALE_meta_analysis_glm_fixed_effect_ADNI_and_AIBL_AD_vs_CN_single_cpg_annotated.csv"
+  )
+) %>% as.data.frame()
+```
+
+
+
+## Merge Cpgs for filtering datasets
+```{R}
+sig.all.cpgs.male <- unique(c(sig.cpgs.in.dmr.males,sig.cpgs.males,sig.cross.cpgs.males))
+sig.all.cpgs.female <- unique(c(sig.cpgs.in.dmr.females,sig.cpgs.females,sig.cross.cpgs.females))
+```
+
+
+```{r}
+# ----------------------------------------------------------------------------
+# Directly load sig cpgs from list
+# ----------------------------------------------------------------------------
+
+list.sig.all.cpgs.female <- readxl::read_xlsx(
+  "~/TBL Dropbox/Wei Zhang/AD-meta-analysis-blood-samples-bySex/analysis_results/others/sig_cpg_table/FEMALE_all_significant_cpgs_updated.xlsx"
+)
+sig.all.cpgs.female <- list.sig.all.cpgs.female$cpgs
+sig.cpgs.females <- list.sig.all.cpgs.female[
+  lapply(str_split(list.sig.all.cpgs.female$Sources, ","), function(l) any(l %in% "AD vs CN")) %>% unlist(),
+] %>% pull(cpgs)
+sig.cpgs.in.dmr.females <- list.sig.all.cpgs.female[
+  lapply(str_split(list.sig.all.cpgs.female$Sources, ","), function(l) any(l %in% "comb-p")) %>% unlist(),
+] %>% pull(cpgs)
+sig.cross.cpgs.females <- list.sig.all.cpgs.female[
+  lapply(str_split(list.sig.all.cpgs.female$Sources, ","), function(l) any(l %in% "cross-tissue")) %>% unlist(),
+] %>% pull(cpgs)
+
+list.sig.all.cpgs.male <- readxl::read_xlsx(
+  "~/TBL Dropbox/Wei Zhang/AD-meta-analysis-blood-samples-bySex/analysis_results/others/sig_cpg_table/MALE_all_significant_cpgs.xlsx"
+)
+sig.all.cpgs.male <- list.sig.all.cpgs.male$cpgs
+sig.cpgs.males <- list.sig.all.cpgs.male %>% filter(
+  Sources %in% "AD vs CN"
+) %>% pull(cpgs)
+sig.cpgs.in.dmr.males <- list.sig.all.cpgs.male %>% filter(
+  Sources %in% "comb-p"
+) %>% pull(cpgs)
+sig.cross.cpgs.males <- list.sig.all.cpgs.male %>% filter(
+  Sources %in% "cross-tissue"
+) %>% pull(cpgs)
+```
+
+## Interaction cpgs
+
+```{r}
+sig.meta_df_AD_vs_CN.annotated.interaction.female <- readxl::read_xlsx(
+  file.path(
+    dir.base,  "analysis_results/meta_analysis/Logistic_regression_model/withSmokePrbs/AD_vs_CN/sig_interaction_cpg_in_meta_analysis_female_male.xlsx"
+  ),
+  sheet = 1
+) 
+sig.meta_df_AD_vs_CN.annotated.interaction.male <- readxl::read_xlsx(
+  file.path(
+    dir.base,  "analysis_results/meta_analysis/Logistic_regression_model/withSmokePrbs/AD_vs_CN/sig_interaction_cpg_in_meta_analysis_female_male.xlsx"
+  ),
+  sheet = 2
+) 
+sig.cpgs.interaction.female <- sig.meta_df_AD_vs_CN.annotated.interaction.female %>%
+  filter(
+    FEMALE_pVal.final.bacon < 0.05
+  ) %>% pull(cpg)
+sig.cpgs.interaction.male <- sig.meta_df_AD_vs_CN.annotated.interaction.male %>%
+  filter(
+    MALE_pVal.final.bacon < 0.05
+  ) %>% pull(cpg)
+
+sig.all.cpgs.female <- c(sig.cpgs.interaction.female, sig.all.cpgs.female)
+sig.all.cpgs.male <- c(sig.cpgs.interaction.male, sig.all.cpgs.male)
+```
+
+
+
+# MRS.weights 
+
+## All significant cpgs
+
+### Female
+```{R MRS.weights.female}
+MRS.weights.female <- meta_df_AD_vs_CN.annotated.female$estimate.bacon[
+  match(
+    sig.all.cpgs.female,
+    meta_df_AD_vs_CN.annotated.female$cpg
+  )
+]
+names(MRS.weights.female) <-  sig.all.cpgs.female
+MRS.weights.female.meta <- MRS.weights.female[!is.na(MRS.weights.female)]
+
+MRS.weights.female.aibl <- meta_df_AD_vs_CN.annotated.female$AIBL_FEMALE_Estimate.bacon[
+  match(
+    sig.all.cpgs.female,
+    meta_df_AD_vs_CN.annotated.female$cpg
+  )
+]
+names(MRS.weights.female.aibl) <-  sig.all.cpgs.female
+MRS.weights.female.aibl <- MRS.weights.female.aibl[!is.na(MRS.weights.female.aibl)]
+
+MRS.weights.female.adni <- meta_df_AD_vs_CN.annotated.female$ADNI_FEMALE_Estimate.bacon[
+  match(
+    sig.all.cpgs.female,
+    meta_df_AD_vs_CN.annotated.female$cpg
+  )
+]
+names(MRS.weights.female.adni) <-  sig.all.cpgs.female
+MRS.weights.female.adni <- MRS.weights.female.adni[!is.na(MRS.weights.female.adni)]
+
+
+```
+
+### Male
+
+```{R MRS.weights.male}
+MRS.weights.male <- meta_df_AD_vs_CN.annotated.male$estimate.bacon[
+  match(
+    sig.all.cpgs.male,
+    meta_df_AD_vs_CN.annotated.male$cpg
+  )
+]
+names(MRS.weights.male) <- sig.all.cpgs.male
+MRS.weights.male.meta <- MRS.weights.male[!is.na(MRS.weights.male)]
+
+MRS.weights.male.aibl <- meta_df_AD_vs_CN.annotated.male$AIBL_MALE_Estimate.bacon[
+  match(
+    sig.all.cpgs.male,
+    meta_df_AD_vs_CN.annotated.male$cpg
+  )
+]
+names(MRS.weights.male.aibl) <- sig.all.cpgs.male
+MRS.weights.male.aibl <- MRS.weights.male.aibl[!is.na(MRS.weights.male.aibl)]
+
+
+MRS.weights.male.adni <- meta_df_AD_vs_CN.annotated.male$ADNI_MALE_Estimate.bacon[
+  match(
+    sig.all.cpgs.male,
+    meta_df_AD_vs_CN.annotated.male$cpg
+  )
+]
+names(MRS.weights.male.adni) <- sig.all.cpgs.male
+MRS.weights.male.adni <- MRS.weights.male.adni[!is.na(MRS.weights.male.adni)]
+
+```
+
+
+
+
+#  Training data 
+
+## AIBL
+```{R aibl}
+#-----------------------------------------------------------------------------
+# Training data 
+# AIBL dataset - PC1 score
+#-----------------------------------------------------------------------------
+# - Only CN and Dementia samples
+cohort <- "AIBL"
+dir.base <-  "~/TBL Dropbox/Wei Zhang/AD-meta-analysis-blood-samples"
+dir.data <- file.path(dir.base,"datasets/",cohort,"/") 
+dir.data.pca <- file.path(dir.data,"/pca_filtering/withSmoke") 
+aibl.se <- readRDS(
+  file.path(dir.data.pca, "AIBL_QNBMIQ_PCfiltered_age_at_least_65.RDS")
+)
+aibl.SSc <- read_csv(
+  file.path(dir.data, "AIBL_Smoking_Scores.csv")
+)
+
+# Keep only 50 cpgs
+aibl.se <- aibl.se[,!aibl.se$`disease status:ch1` %in% "Mild Cognitive Impairment" ]
+```
+
+
+
+### Female
+```{R}
+aibl.se.female <- aibl.se[rownames(assay(aibl.se)) %in% sig.all.cpgs.female, aibl.se$`gender:ch1` == "Female"]
+table(aibl.se.female$`disease status:ch1`)
+# Alzheimer's disease     healthy control 
+#  77                    191 
+
+
+pheno.training.aibl.female <- colData(aibl.se.female)
+pheno.training.aibl.female$DIAGNOSIS <- factor(
+  pheno.training.aibl.female$`disease status:ch1`, 
+  levels = c("healthy control", "Alzheimer's disease")
+)
+pheno.training.aibl.female$SSc <- aibl.SSc$smokingScore[match(rownames(pheno.training.aibl.female), aibl.SSc$SampleName)]
+pheno.training.aibl.female$SEX <- pheno.training.aibl.female$`gender:ch1`
+pheno.training.aibl.female$AGE <- pheno.training.aibl.female$age.pred.Elastic_Net
+pheno.training.aibl.female$Gran <- pheno.training.aibl.female$Eosino + pheno.training.aibl.female$Neutro
+plyr::count(pheno.training.aibl.female$DIAGNOSIS)
+# x freq
+# 1     healthy control  191
+# 2 Alzheimer's disease  77
+```
+
+### Male
+```{R}
+aibl.se.male <- aibl.se[rownames(assay(aibl.se)) %in% sig.all.cpgs.male, aibl.se$`gender:ch1` == "Male"]
+table(aibl.se.male$`disease status:ch1`)
+# Alzheimer's disease     healthy control 
+#  59                    164
+pheno.training.aibl.male <- colData(aibl.se.male)
+pheno.training.aibl.male$DIAGNOSIS <- factor(
+  pheno.training.aibl.male$`disease status:ch1`, 
+  levels = c("healthy control", "Alzheimer's disease")
+)
+pheno.training.aibl.male$SSc <- aibl.SSc$smokingScore[match(rownames(pheno.training.aibl.male), aibl.SSc$SampleName)]
+pheno.training.aibl.male$SEX <- pheno.training.aibl.male$`gender:ch1`
+pheno.training.aibl.male$AGE <- pheno.training.aibl.male$age.pred.Elastic_Net
+pheno.training.aibl.male$Gran <- pheno.training.aibl.male$Eosino + pheno.training.aibl.male$Neutro
+
+plyr::count(pheno.training.aibl.male$DIAGNOSIS)
+# x freq
+# 1     healthy control  165
+# 2 Alzheimer's disease  58
+```
+
+## ADNI
+
+```{R adni} 
+#-----------------------------------------------------------------------------
+# ADNI
+#-----------------------------------------------------------------------------
+cohort <- "ADNI"
+dir.base <- "~/TBL Dropbox/Wei Zhang/AD-meta-analysis-blood-samples/"
+dir.data <- file.path(dir.base,"datasets/",cohort,"/") 
+dir.data.pca <- file.path(dir.data,"/data/DNA_methylation/pca_filtering/withSmoke") 
+dir.data.base <- file.path(dir.data,"/data/DNA_methylation/") 
+adni.se <- readRDS(
+  file.path(dir.data.pca, "ADNI_QNBMIQ_PCfiltered_min_age_at_visit_65_AD_CN.RDS")
+)
+adni.SSc <- read_csv(
+  file.path(dir.data.base,
+  "ADNI_Smoking_Scores_AD_CN.csv")
+)
+
+adni.se <- adni.se[,!adni.se$DX %in% "MCI" ]
+adni.se <- adni.se[,!is.na(adni.se$DX)]
+table(adni.se$DX)
+# Alzheimer's disease     healthy control 
+#  291                    502 
+
+file.age.adni <- file.path(dir.data,"/data/DNA_methylation/ADNI_Predicted_age.xlsx")
+if(!file.exists(file.age.adni)){
+  age <- age.predictor(assay(adni.se))
+  tab.age <- age$age.pred
+  tab.age$Sample <- rownames(tab.age)
+  writexl::write_xlsx(tab.age,file.age.adni)
+} else {
+  tab.age <- readxl::read_xlsx(file.age.adni)
+}
+tab.age$barcodes <- tab.age$Sample
+
+
+pheno.training.adni <- colData(adni.se) %>% merge(tab.age)
+pheno.training.adni$DIAGNOSIS <- factor(
+  ifelse(pheno.training.adni$DX == "CN", "healthy control", "Alzheimer's disease"),
+  levels = c("healthy control", "Alzheimer's disease")
+)
+pheno.training.adni$SEX <- pheno.training.adni$PTGENDER
+pheno.training.adni$AGE <- pheno.training.adni$age_at_visit
+pheno.training.adni$age.pred.Elastic_Net <- pheno.training.adni$Elastic_Net
+plyr::count(pheno.training.adni$DIAGNOSIS)
+
+# Keep only last visit 
+pheno.training.adni <- pheno.training.adni %>% as.data.frame %>%  dplyr::group_by(RID) %>% filter(age_at_visit == max(age_at_visit)) 
+adni.se <- adni.se[,adni.se$barcodes %in% pheno.training.adni$barcodes]
+plyr::count(pheno.training.adni$DIAGNOSIS)
+adni.se <- adni.se[,match(pheno.training.adni$barcodes,adni.se$barcodes)]
+all(adni.se$barcodes == pheno.training.adni$barcodes)
+```
+
+
+### Male
+```{R}
+adni.se.male <- adni.se[rownames(assay(adni.se)) %in% sig.all.cpgs.male,pheno.training.adni$SEX == "Male"]
+pheno.training.adni.male <- pheno.training.adni[pheno.training.adni$SEX == "Male",]
+pheno.training.adni.male$Gran <- pheno.training.adni.male$Eosino + pheno.training.adni.male$Neutro
+pheno.training.adni.male$SSc <- adni.SSc$smokingScore[match(pheno.training.adni.male$barcodes, adni.SSc$SampleName)]
+```
+
+### Female
+```{R}
+adni.se.female <- adni.se[rownames(assay(adni.se)) %in% sig.all.cpgs.female,pheno.training.adni$SEX == "Female"]
+pheno.training.adni.female <- pheno.training.adni[pheno.training.adni$SEX == "Female",]
+pheno.training.adni.female$Gran <- pheno.training.adni.female$Eosino + pheno.training.adni.female$Neutro
+pheno.training.adni.female$SSc <- adni.SSc$smokingScore[match(pheno.training.adni.female$barcodes, adni.SSc$SampleName)]
+```
+
+#  Testing dataset 
+
+```{R AddNeuromed}
+#-----------------------------------------------------------------------------
+# AddNeuromed dataset
+#-----------------------------------------------------------------------------
+# http://www.sthda.com/english/articles/31-principal-component-methods-in-r-practical-guide/118-principal-component-analysis-in-r-prcomp-vs-princomp/#predict-using-pca
+# http://www.sthda.com/english/articles/38-regression-model-validation/157-cross-validation-essentials-in-r/
+cohort <- "AddNeuroMed"
+dir.base <- "~/TBL Dropbox/Wei Zhang/AD-meta-analysis-blood-samples/"
+dir.data <- file.path(dir.base,"datasets/",cohort,"/") 
+dir.data.pca <- file.path(dir.data,"/step3_pca_filtering/withSmoke") 
+dir.data.processed <- file.path(dir.data,"/step2_processed/withSmoke") 
+addNeuroMed.se <- readRDS(file.path(dir.data.pca, "addNeuroMed_QNBMIQ_PCfiltered.RDS"))
+#load(file.path(dir.data.processed,"addNeuroMed_se_predicted.rda"))
+#addNeuroMed.se <- addNeuroMed.se.predicted
+addNeuroMed.SSc <- read_csv(
+  file.path(
+    dir.data,
+    "addNeuroMed_Smoking_Scores.csv"
+  )
+)
+#outliers <- readr::read_csv(paste0(dir.data.pca, "addNeuroMed_PCs_usingBetas.csv"),col_types = readr::cols()) %>%
+#  dplyr::filter(outlier_PC1 == 1 | outlier_PC2 == 1) %>% pull(1) 
+
+
+addNeuroMed.se <- addNeuroMed.se[,addNeuroMed.se$disease.state.ch1 !=  "mild cognitive impairment"]
+addNeuroMed.se$disease.state.ch1[addNeuroMed.se$disease.state.ch1 == "control"] <- "healthy control"
+# addNeuroMed.se <- addNeuroMed.se[,! colnames(addNeuroMed.se) %in% outliers]
+
+addNeuroMed.se <- addNeuroMed.se[rowSums(is.na(assay(addNeuroMed.se))) < 1,]
+
+age <- age.predictor(assay(addNeuroMed.se))
+tab.age <- age$age.pred
+tab.age$geo_accession <- rownames(tab.age)
+
+pheno.testing <- data.frame(colData (addNeuroMed.se)) %>% merge(tab.age)
+pheno.testing$DIAGNOSIS <- factor(
+  pheno.testing$disease.state.ch1, 
+  levels = c("healthy control", "Alzheimer's disease")
+)
+pheno.testing$SEX <- pheno.testing$Sex.ch1
+pheno.testing$DIAGNOSIS <- pheno.testing$DIAGNOSIS %>% droplevels()
+pheno.testing$AGE <- pheno.testing$age.ch1
+
+addNeuroMed.se <- addNeuroMed.se[,match(pheno.testing$geo_accession,colnames(addNeuroMed.se))]
+```
+
+## Male
+```{R}
+addNeuroMed.se.male <- addNeuroMed.se[rownames(assay(addNeuroMed.se)) %in% sig.all.cpgs.male,addNeuroMed.se$Sex.ch1 == "Male"]
+
+#  0 = control, 1 = AD
+pheno.testing.male <- pheno.testing[match(addNeuroMed.se.male$geo_accession,pheno.testing$geo_accession),]
+pheno.testing.male$SSc <- addNeuroMed.SSc$smokingScore[match(pheno.testing.male$geo_accession, addNeuroMed.SSc$SampleName)]
+plyr::count(pheno.testing.male$DIAGNOSIS)
+pheno.testing.male$Gran <- pheno.testing.male$Eosino + pheno.testing.male$Neutro
+```
+
+## Female
+
+```{R}
+addNeuroMed.se.female <- addNeuroMed.se[rownames(assay(addNeuroMed.se)) %in% sig.all.cpgs.female, addNeuroMed.se$Sex.ch1 == "Female"]
+
+pheno.testing.female <- pheno.testing[match(addNeuroMed.se.female$geo_accession,pheno.testing$geo_accession),]
+pheno.testing.female$SSc <- addNeuroMed.SSc$smokingScore[match(pheno.testing.female$geo_accession, addNeuroMed.SSc$SampleName)]
+pheno.testing.female$Gran <- pheno.testing.female$Eosino + pheno.testing.female$Neutro
+plyr::count(pheno.testing.female$DIAGNOSIS)
+```
+
+```{r}
+save(
+  pheno.training.adni.female, pheno.training.adni.male,
+  pheno.training.aibl.female, pheno.training.aibl.male,
+  pheno.testing.female,pheno.testing.male, 
+  file = "Data_AUC_withSmoke.RData"
+)
+```
+
+
+```{R}
+rm(addNeuroMed.se)
+rm(adni.se)
+rm(aibl.se)
+```
+
+```{R}
+addNeuroMed.se.male
+addNeuroMed.se.female
+```
+
+```{R}
+adni.se.male
+adni.se.female
+```
+
+```{R}
+aibl.se.male
+aibl.se.female
+```
+
+```{R}
+get_auc <- function(model.formula = model.formula,data.training = NULL ,data.testing = NULL){
+  model <- glm(
+    formula = model.formula,
+    data = data.training, 
+    family = binomial
+  )
+  #-----------------------------------------------------------------------------
+  #  Testing model
+  #-----------------------------------------------------------------------------
+  data.testing$probabilities <- model %>% predict(data.testing, type = "response")
+  result <- roc(DIAGNOSIS ~ probabilities, data = data.testing,print.auc=TRUE)
+  
+  wilcox <- wilcox.test(probabilities ~ DIAGNOSIS, data = data.testing, exact = TRUE, conf.int = TRUE)
+  
+  ci <- ci.auc (result, conf.level = 0.95, method = "bootstrap")
+  
+  auc <- result$auc
+  
+  
+  return(
+    data.frame(
+      "auc" = auc,
+      "CI" = paste0("95% CI: ",round(min(ci),digits = 4),"-" ,round(max(ci),digits = 4)," (DeLong)"),
+      "Wilcoxon_pvalue_prob" = wilcox$p.value,
+      "Wilcoxon_pvalue_estimate" = wilcox$estimate
+    )
+  )
+}
+
+
+roc_plot <- function(
+  cpgs = NULL,
+  cpgs.label = NULL,
+  model.formula = "DIAGNOSIS ~ MRS + AGE + SEX + B + NK + CD4T + CD8T + Mono + Neutro",
+  training.datasets = "AIBL",
+  sex = "Male",
+  use.EPIC = FALSE,
+  impute.na.cpgs = FALSE,
+  age = "Real"
+){
+  
+  if(sex == "Male")  {
+    if(cpgs.label == "Sig cpgs in AD vs CN") cpgs <- unique(c(sig.cpgs.males))
+    if(cpgs.label == "Sig cpgs in AD vs CN + Interaction CpGs") cpgs <- unique(c(sig.cpgs.males,sig.cpgs.interaction.male))
+    if(cpgs.label == "Sig cpgs in AD vs CN + cross-tissue single CpGs") cpgs <- unique(c(sig.cpgs.males,sig.cross.cpgs.males))
+    if(cpgs.label == "Cpgs in sig. DMR + Sig cpgs in AD vs CN") cpgs <- unique(c(sig.cpgs.in.dmr.males,sig.cpgs.males))
+    if(cpgs.label == "Cpgs in sig. DMR + Sig cpgs in AD vs CN + cross-tissue single CpGs") cpgs <- unique(c(sig.cpgs.in.dmr.males,sig.cpgs.males,sig.cross.cpgs.males))
+    if(cpgs.label == "Cpgs in sig. DMR + Sig cpgs in AD vs CN + cross-tissue single CpGs + Interaction CpGs") cpgs <- sig.all.cpgs.male
+  } else if(sex == "Female") {
+    if(cpgs.label == "Sig cpgs in AD vs CN") cpgs <- unique(c(sig.cpgs.females))
+     if(cpgs.label == "Sig cpgs in AD vs CN + Interaction CpGs") cpgs <- unique(c(sig.cpgs.females,sig.cpgs.interaction.female))
+    if(cpgs.label == "Sig cpgs in AD vs CN + cross-tissue single CpGs") cpgs <- unique(c(sig.cpgs.females,sig.cross.cpgs.females))
+    if(cpgs.label == "Cpgs in sig. DMR + Sig cpgs in AD vs CN") cpgs <- unique(c(sig.cpgs.in.dmr.females,sig.cpgs.females))
+    if(cpgs.label == "Cpgs in sig. DMR + Sig cpgs in AD vs CN + cross-tissue single CpGs") cpgs <- unique(c(sig.cpgs.in.dmr.females,sig.cpgs.females,sig.cross.cpgs.females))
+    if(cpgs.label == "Cpgs in sig. DMR + Sig cpgs in AD vs CN + cross-tissue single CpGs + Interaction CpGs") cpgs <- sig.all.cpgs.female
+  }
+  cpgs.unfiltered <- cpgs
+  
+  if(!use.EPIC){
+    cpgs <- cpgs[cpgs %in% rownames(IlluminaHumanMethylation450kanno.ilmn12.hg19::Locations)]
+  }
+  
+  if(sex == "Male")  pheno.testing <- pheno.testing.male 
+  if(sex == "Female")  pheno.testing <- pheno.testing.female 
+  
+  if(sex == "Male"){
+    aibl.se <- aibl.se.male[rownames(aibl.se.male) %in% cpgs,]
+    adni.se <- adni.se.male[rownames(adni.se.male) %in% cpgs,]
+    addNeuroMed.se <- addNeuroMed.se.male[rownames(addNeuroMed.se.male) %in% cpgs,]
+  } else {
+    aibl.se <- aibl.se.female[rownames(aibl.se.female) %in% cpgs,]
+    adni.se <- adni.se.female[rownames(adni.se.female) %in% cpgs,]
+    addNeuroMed.se <- addNeuroMed.se.female[rownames(addNeuroMed.se.female) %in% cpgs,]
+  }
+  
+  if(impute.na.cpgs){
+    assay(aibl.se) <- plyr::aaply(assay(aibl.se),.margins = 2, function(betas) {
+      betas[is.na(betas)] <- mean(betas,na.rm =TRUE); betas
+    }) %>% t
+    assay(adni.se) <- plyr::aaply(assay(adni.se),.margins = 2, function(betas) {betas[is.na(betas)] <- mean(betas,na.rm =TRUE); betas}) %>% t
+    aux <-  plyr::aaply(assay(addNeuroMed.se),.margins = 2, function(betas) {
+      betas[is.na(betas)] <- mean(betas,na.rm =TRUE); betas
+    }) %>% t
+    rownames(aux) <- rownames(addNeuroMed.se)
+    assay(addNeuroMed.se) <- aux
+  }
+  
+  if(training.datasets == "AIBL"){
+    if(sex == "Male")  pheno.training <- pheno.training.aibl.male 
+    if(sex == "Female")  pheno.training <- pheno.training.aibl.female 
+    data.training <- assay(aibl.se)
+  }
+  if(training.datasets == "ADNI"){
+    if(sex == "Male")  pheno.training <- pheno.training.adni.male 
+    if(sex == "Female")  pheno.training <- pheno.training.adni.female 
+    data.training <- assay(adni.se)
+  }
+  if(training.datasets == "ADNI + AIBL"){
+    
+    if(sex == "Male")  {
+      common.cols <- intersect(colnames(pheno.training.adni.male), colnames(pheno.training.aibl.male))
+      pheno.training <- 
+        rbind(
+          pheno.training.adni.male[,common.cols] %>% as.data.frame(),
+          pheno.training.aibl.male[,common.cols] %>% as.data.frame()
+        )
+    } else if(sex == "Female")  {
+      common.cols <- intersect(colnames(pheno.training.adni.female), colnames(pheno.training.aibl.female))
+      pheno.training <- 
+        rbind(
+          pheno.training.adni.female[,common.cols] %>% as.data.frame(),
+          pheno.training.aibl.female[,common.cols] %>% as.data.frame()
+        )
+    }
+    
+    common.cpgs <- intersect(rownames(aibl.se), rownames(adni.se))
+    data.training <- cbind(assay(adni.se)[common.cpgs,],assay(aibl.se)[common.cpgs,])
+  }
+  
+  if(age == "Predicted"){
+    print("Age predicted")
+    pheno.training$AGE <- pheno.training$age.pred.Elastic_Net
+    pheno.testing$AGE <- pheno.testing$Elastic_Net
+  }  else {
+    pheno.testing$AGE <- pheno.testing$age.ch1
+    pheno.training$AGE <- pheno.training$AGE
+  }
+  
+  #-----------------------------------------------------------------------------
+  # - compute MRS CpGs in TRAINING
+  #-----------------------------------------------------------------------------
+  common.cpgs <- intersect(rownames(addNeuroMed.se), rownames(data.training))
+  
+  # Calculate the MRS for each sample beta dot product weights
+  # MRS.weights
+  if(sex == "Female") MRS <- MRS.weights.female[common.cpgs] %*% data.training[common.cpgs,]
+  if(sex == "Male") MRS <- MRS.weights.male[common.cpgs] %*% data.training[common.cpgs,]
+  
+  data.training <- cbind(pheno.training,data.frame("MRS" = MRS %>% as.numeric() ))
+  
+  #-----------------------------------------------------------------------------
+  # - compute MRS CpGs in Testing
+  #-----------------------------------------------------------------------------
+  data.test <- assay(addNeuroMed.se)[common.cpgs,] 
+  if(sex == "Female") MRS <- MRS.weights.female[common.cpgs] %*% data.test[common.cpgs,]
+  if(sex == "Male") MRS <- MRS.weights.male[common.cpgs] %*% data.test[common.cpgs,]
+  
+  data.testing <- cbind(pheno.testing,data.frame("MRS" = MRS %>% as.numeric() ))
+  
+  model <- glm(
+    formula = model.formula,
+    data = data.training, 
+    family = binomial
+  )
+  #-----------------------------------------------------------------------------
+  #  Testing model
+  #-----------------------------------------------------------------------------
+  data.testing$probabilities <- model %>% predict(data.testing, type = "response")
+  return(list(roc(DIAGNOSIS ~ probabilities, data = data.testing,print.auc = TRUE)))
+}
+
+```
+
+```{R calc_auc_function}
+calc_auc <- function(
+  cpgs = NULL,
+  cpgs.label = NULL,
+  model.formula = "DIAGNOSIS ~ MRS + AGE + SEX + B + NK + CD4T + CD8T + Mono + Neutro",
+  age = NULL, 
+  mrs.source = "meta-analysis",
+  impute.na.cpgs = FALSE,
+  use.EPIC = TRUE,
+  training.datasets = "AIBL",
+  sex = "Male"
+){
+  if(sex == "Male")  {
+    if(cpgs.label == "Sig cpgs in AD vs CN") cpgs <- unique(c(sig.cpgs.males))
+    if(cpgs.label == "Sig cpgs in AD vs CN + Interaction CpGs") cpgs <- unique(c(sig.cpgs.males,sig.cpgs.interaction.male))
+    if(cpgs.label == "Sig cpgs in AD vs CN + cross-tissue single CpGs") cpgs <- unique(c(sig.cpgs.males,sig.cross.cpgs.males))
+    if(cpgs.label == "Cpgs in sig. DMR + Sig cpgs in AD vs CN") cpgs <- unique(c(sig.cpgs.in.dmr.males,sig.cpgs.males))
+    if(cpgs.label == "Cpgs in sig. DMR + Sig cpgs in AD vs CN + cross-tissue single CpGs") cpgs <- unique(c(sig.cpgs.in.dmr.males,sig.cpgs.males,sig.cross.cpgs.males))
+    if(cpgs.label == "Cpgs in sig. DMR + Sig cpgs in AD vs CN + cross-tissue single CpGs + Interaction CpGs") cpgs <- sig.all.cpgs.male
+  } else if(sex == "Female") {
+    if(cpgs.label == "Sig cpgs in AD vs CN") cpgs <- unique(c(sig.cpgs.females))
+     if(cpgs.label == "Sig cpgs in AD vs CN + Interaction CpGs") cpgs <- unique(c(sig.cpgs.females,sig.cpgs.interaction.female))
+    if(cpgs.label == "Sig cpgs in AD vs CN + cross-tissue single CpGs") cpgs <- unique(c(sig.cpgs.females,sig.cross.cpgs.females))
+    if(cpgs.label == "Cpgs in sig. DMR + Sig cpgs in AD vs CN") cpgs <- unique(c(sig.cpgs.in.dmr.females,sig.cpgs.females))
+    if(cpgs.label == "Cpgs in sig. DMR + Sig cpgs in AD vs CN + cross-tissue single CpGs") cpgs <- unique(c(sig.cpgs.in.dmr.females,sig.cpgs.females,sig.cross.cpgs.females))
+    if(cpgs.label == "Cpgs in sig. DMR + Sig cpgs in AD vs CN + cross-tissue single CpGs + Interaction CpGs") cpgs <- sig.all.cpgs.female
+  }
+  cpgs.unfiltered <- cpgs
+  
+  if(!use.EPIC){
+    cpgs <- cpgs[cpgs %in% rownames(IlluminaHumanMethylation450kanno.ilmn12.hg19::Locations)]
+  }
+  
+  if(sex == "Male")  pheno.testing <- pheno.testing.male 
+  if(sex == "Female")  pheno.testing <- pheno.testing.female 
+  
+  if(sex == "Male"){
+    aibl.se <- aibl.se.male[rownames(aibl.se.male) %in% cpgs,]
+    adni.se <- adni.se.male[rownames(adni.se.male) %in% cpgs,]
+    addNeuroMed.se <- addNeuroMed.se.male[rownames(addNeuroMed.se.male) %in% cpgs,]
+  } else {
+    aibl.se <- aibl.se.female[rownames(aibl.se.female) %in% cpgs,]
+    adni.se <- adni.se.female[rownames(adni.se.female) %in% cpgs,]
+    addNeuroMed.se <- addNeuroMed.se.female[rownames(addNeuroMed.se.female) %in% cpgs,]
+  }
+  
+  if(impute.na.cpgs){
+    assay(aibl.se) <- plyr::aaply(assay(aibl.se),.margins = 2, function(betas) {
+      betas[is.na(betas)] <- mean(betas,na.rm =TRUE); betas
+    }) %>% t
+    assay(adni.se) <- plyr::aaply(assay(adni.se),.margins = 2, function(betas) {betas[is.na(betas)] <- mean(betas,na.rm =TRUE); betas}) %>% t
+    aux <-  plyr::aaply(assay(addNeuroMed.se),.margins = 2, function(betas) {
+      betas[is.na(betas)] <- mean(betas,na.rm =TRUE); betas
+    }) %>% t
+    rownames(aux) <- rownames(addNeuroMed.se)
+    assay(addNeuroMed.se) <- aux
+  }
+  
+  if(training.datasets == "AIBL"){
+    if(sex == "Male")  pheno.training <- pheno.training.aibl.male 
+    if(sex == "Female")  pheno.training <- pheno.training.aibl.female 
+    data.training <- assay(aibl.se)
+  }
+  if(training.datasets == "ADNI"){
+    if(sex == "Male")  pheno.training <- pheno.training.adni.male 
+    if(sex == "Female")  pheno.training <- pheno.training.adni.female 
+    data.training <- assay(adni.se)
+  }
+  if(training.datasets == "ADNI + AIBL"){
+    
+    if(sex == "Male")  {
+      common.cols <- intersect(colnames(pheno.training.adni.male), colnames(pheno.training.aibl.male))
+      pheno.training <- 
+        rbind(
+          pheno.training.adni.male[,common.cols] %>% as.data.frame(),
+          pheno.training.aibl.male[,common.cols] %>% as.data.frame()
+        )
+    } else if(sex == "Female")  {
+      common.cols <- intersect(colnames(pheno.training.adni.female), colnames(pheno.training.aibl.female))
+      pheno.training <- 
+        rbind(
+          pheno.training.adni.female[,common.cols] %>% as.data.frame(),
+          pheno.training.aibl.female[,common.cols] %>% as.data.frame()
+        )
+    }
+    
+    common.cpgs <- intersect(rownames(aibl.se), rownames(adni.se))
+    data.training <- cbind(assay(adni.se)[common.cpgs,],assay(aibl.se)[common.cpgs,])
+  }
+  
+  if(age == "Predicted"){
+    print("Age predicted")
+    pheno.training$AGE <- pheno.training$age.pred.Elastic_Net
+    pheno.testing$AGE <- pheno.testing$Elastic_Net
+  }  else {
+    pheno.testing$AGE <- pheno.testing$age.ch1
+    pheno.training$AGE <- pheno.training$AGE
+  }
+  
+  #-----------------------------------------------------------------------------
+  # - compute MRS CpGs in TRAINING
+  #-----------------------------------------------------------------------------
+  common.cpgs <- intersect(rownames(addNeuroMed.se), rownames(data.training))
+  
+  # Calculate the MRS for each sample beta dot product weights
+  # MRS.weights
+  if(mrs.source == "meta-analysis"){
+    MRS.weights.female <- MRS.weights.female.meta
+    MRS.weights.male <- MRS.weights.male.meta
+  } else if(mrs.source == "AIBL"){
+    MRS.weights.female <- MRS.weights.female.aibl
+    MRS.weights.male <- MRS.weights.male.aibl
+  } else if(mrs.source == "ADNI"){
+    MRS.weights.female <- MRS.weights.female.adni
+    MRS.weights.male <- MRS.weights.male.adni
+  }
+  
+  
+  if(sex == "Female") MRS <- MRS.weights.female[common.cpgs] %*% data.training[common.cpgs,]
+  if(sex == "Male") MRS <- MRS.weights.male[common.cpgs] %*% data.training[common.cpgs,]
+  
+  data.training <- cbind(pheno.training,data.frame("MRS" = MRS %>% as.numeric() ))
+  
+  #-----------------------------------------------------------------------------
+  # - compute MRS CpGs in Testing
+  #-----------------------------------------------------------------------------
+  data.test <- assay(addNeuroMed.se)[common.cpgs,] 
+  if(sex == "Female") MRS <- MRS.weights.female[common.cpgs] %*% data.test[common.cpgs,]
+  if(sex == "Male") MRS <- MRS.weights.male[common.cpgs] %*% data.test[common.cpgs,]
+  
+  data.testing <- cbind(pheno.testing,data.frame("MRS" = MRS %>% as.numeric() ))
+  
+  #-----------------------------------------------------------------------------
+  #  Training model
+  #-----------------------------------------------------------------------------
+  # - Logistic regression logit (Pr(AD)) ~ alpha + beta * PC1 + age + sex
+  model <- glm(
+    model.formula,
+    data = data.training, 
+    family = binomial
+  )
+  
+  #-----------------------------------------------------------------------------
+  #  Testing model
+  #-----------------------------------------------------------------------------
+  probabilities <- model %>% predict(data.testing, type = "response")
+  
+  data.testing$probabilities <- probabilities
+  
+  # Compute roc
+  res.roc <- roc(data.testing$DIAGNOSIS, probabilities)
+
+  
+  wilcox <- tryCatch({
+    wilcox.test(probabilities ~ DIAGNOSIS, data = data.testing, exact = TRUE, conf.int = TRUE)
+  }, error = function(e){
+    data.frame("p.value" = NA,"estimate" = NA)
+  })
+  
+  ci <- tryCatch({
+    ci.auc (res.roc, conf.level = 0.95, method = "bootstrap")
+  }, error = function(e){
+    NA
+  })
+  
+  #plot.roc(res.roc, print.auc = TRUE)
+  
+  
+  cutpoint <- coords (
+    res.roc, 
+    x = "best", 
+    best.method = "youden",
+    ret = c(
+      "threshold", 
+      "specificity", "sensitivity",
+      "accuracy", "ppv", "npv"
+    )
+  )
+  if(nrow(cutpoint) > 1) cutpoint <- cutpoint[1,]
+  
+  cbind(
+    data.frame(
+      "Sex" = sex,
+      "Training dataset" = training.datasets,
+      "Testing dataset" = "AddNeuroMed",
+      "use EPIC cpgs" = use.EPIC,
+      "cpgs.label" = cpgs.label,
+      "Initial Number of CpGs" = length(cpgs.unfiltered),
+      "Number of common CpGs Training and Testing " = length(cpgs),
+      "Impute NA cpgs with mean for each sample" = impute.na.cpgs,
+      "Age" = age,
+      "Model" = model.formula,
+      "Cpgs" = cpgs.label,
+      "MRS estimates source" = mrs.source,
+      "AUC" = res.roc$auc,
+      "CI" = paste0("95% CI: ",round(min(ci),digits = 4),"-" ,round(max(ci),digits = 4)," (DeLong)"),
+      "Wilcoxon_pvalue_prob" = wilcox$p.value,
+      "Wilcoxon_pvalue_estimate" = wilcox$estimate
+    ),
+    cutpoint
+  )
+}
+```
+
+```{R auc_loop}
+loop.formulas <- c(
+  "DIAGNOSIS ~ MRS + AGE + B + NK + CD4T + Mono + Gran",
+  "DIAGNOSIS ~ MRS + AGE",
+  "DIAGNOSIS ~ MRS ",
+  "DIAGNOSIS ~ AGE",
+  "DIAGNOSIS ~ SSc",
+  "DIAGNOSIS ~ B + NK + CD4T + Mono + Gran",
+  "DIAGNOSIS ~ MRS + B + NK + CD4T + Mono + Gran",
+  "DIAGNOSIS ~ AGE + B + NK + CD4T + Mono + Gran",
+  "DIAGNOSIS ~ MRS + AGE + B + NK + CD4T + Mono + Gran + SSc",
+  "DIAGNOSIS ~ MRS + AGE + SSc",
+  "DIAGNOSIS ~ MRS + SSc",
+  "DIAGNOSIS ~ AGE + SSc",
+  "DIAGNOSIS ~ B + NK + CD4T + Mono + Gran + SSc",
+  "DIAGNOSIS ~ MRS + B + NK + CD4T + Mono + Gran + SSc",
+  "DIAGNOSIS ~ AGE + B + NK + CD4T + Mono + Gran + SSc"
+)
+
+final.table <- data.frame()
+for(training.datasets in c("ADNI + AIBL","ADNI","AIBL")){
+  for(model.formula in loop.formulas){
+    for(mrs.source in c("AIBL","ADNI","meta-analysis")){
+      for(impute.na.cpgs in c(F)){
+        for(use.EPIC in c(F)){
+          for(age in c("Predicted","Real")){
+            for(sex in c("Male","Female")){
+              for(cpgs.label in c(
+                "Sig cpgs in AD vs CN",
+                "Sig cpgs in AD vs CN + Interaction CpGs",
+                "Sig cpgs in AD vs CN + cross-tissue single CpGs",
+                "Cpgs in sig. DMR + Sig cpgs in AD vs CN",
+                "Cpgs in sig. DMR + Sig cpgs in AD vs CN + cross-tissue single CpGs",
+                "Cpgs in sig. DMR + Sig cpgs in AD vs CN + cross-tissue single CpGs + Interaction CpGs")
+              ){
+                table <- tryCatch(
+                  {
+                    calc_auc(
+                      training.datasets = training.datasets,
+                      cpgs.label = cpgs.label,
+                      age = age,
+                      mrs.source = mrs.source,
+                      use.EPIC = use.EPIC,
+                      impute.na.cpgs = impute.na.cpgs,
+                      model.formula = model.formula,
+                      sex = sex
+                    )}, error = function(e){ NA }
+                )
+                final.table <- rbind(final.table,table)
+                print(table %>% t)
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+writexl::write_xlsx(
+  x = final.table %>% dplyr::arrange(AUC),
+  path = "~/TBL Dropbox/Wei Zhang/AD-meta-analysis-blood-samples-bySex/analysis_results/Methylation_risk_score/withSmoke/AUC_summary_table_with_ADNI_only_last_visit_samples_with_Gran_without_CDT8_with_diff_estimates_with_SSc_all_cpgs_plus_interaction.xlsx"
+)  
+```
+
+
+## Results
+```{R tab}
+final.table %>% DT::datatable(filter = "top")
+```
+
+```{R}
+final.table <- readxl::read_xlsx(
+  "~/TBL Dropbox/Wei Zhang/AD-meta-analysis-blood-samples-bySex/analysis_results/Methylation_risk_score/withSmoke/AUC_summary_table_with_ADNI_only_last_visit_samples_with_Gran_without_CDT8_with_diff_estimates_with_SSc_single_and_cross_tissue_only_top_9_pval_in_male.xlsx"
+)
+```
+
+
+```{R fig.height=12, fig.width=20, warning=FALSE}
+final.table$AUC <- final.table$AUC %>% as.numeric()
+final.table$Model <- factor(
+  final.table$Model,
+  levels = rev(unique(final.table$Model[order(stringr::str_length(final.table$Model))]))
+)
+library(ggplot2)
+final.table.without.cross <- final.table %>% dplyr::filter(cpgs.label == "Sig cpgs in AD vs CN")
+
+plot.list <- plyr::alply(final.table.without.cross$Sex %>% unique,.margins = 1,.fun = function(i){
+  
+  aux <-  final.table.without.cross %>% dplyr::filter(Sex %in% i) %>% 
+    dplyr::filter(use.EPIC.cpgs  == FALSE & Impute.NA.cpgs.with.mean.for.each.sample == FALSE & Age == "Real")
+  aux <- aux[aux$Training.dataset == "AIBL",]
+  aux <- aux[aux$MRS.estimates.source == "AIBL",]
+  df <- tidyr::pivot_longer(data = aux,cols  = c("sensitivity","specificity","AUC"))
+  
+  p <- ggpubr::ggbarplot(
+    data = df,
+    x = "Model",
+    y = "value",
+    facet.by = "Training.dataset",
+    add.params = list(color = "lightgray", size = 1.5),
+    font.label = list(color = "white", size = 12,  vjust = 0.5),     
+    fill = "name",
+    sorting = "none",
+    position = position_dodge(0.9),
+    color = "name",
+    ylab = "",
+    title = paste0("Gender: ", i, "\nCpGs: ",  unique(df$cpgs.label), " (n = ",unique(df$Number.of.common.CpGs.Training.and.Testing.),")"),
+    
+  )  + ggsci::scale_fill_jco() + 
+    ggsci::scale_color_jco() +  
+    ggpubr::theme_cleveland() + coord_flip()
+  
+  if(i != unique(final.table.without.cross$Sex[1])){
+    p <- p +  theme(axis.ticks.y = element_blank(),
+                    axis.text.y = element_blank())
+  }
+  return(p)
+})
+
+
+ggpubr::ggarrange(plotlist = plot.list,widths = c(1.65,1),ncol = length(plot.list),common.legend = T) %>% 
+  ggsave(
+    filename = "~/TBL Dropbox/Wei Zhang/AD-meta-analysis-blood-samples-bySex/analysis_results/Methylation_risk_score/withSmoke/out_of_samples_barchart_single_cpgs_with_Gran_without_CDT8_AIBL_estimate.pdf",
+    width = 20,height = 12
+  )
+
+```
+
+```{R fig.height=12, fig.width=20, warning=FALSE}
+final.table$AUC <- final.table$AUC %>% as.numeric()
+final.table$Model <- factor(
+  final.table$Model,
+  levels = rev(unique(final.table$Model[order(stringr::str_length(final.table$Model))]))
+)
+
+final.table.without.cross <- final.table %>% dplyr::filter(cpgs.label == "Sig cpgs in AD vs CN")
+
+plot.list <- plyr::alply(final.table.without.cross$Sex %>% unique,.margins = 1,.fun = function(i){
+  
+  aux <-  final.table.without.cross %>% dplyr::filter(Sex %in% i) %>% 
+    dplyr::filter(use.EPIC.cpgs  == FALSE & Impute.NA.cpgs.with.mean.for.each.sample == FALSE & Age == "Real")
+  print(round(range(aux$AUC),digits = 2))
+  aux <- aux[aux$MRS.estimates.source == "meta-analysis",]
+  p <- ggpubr::ggdotchart(
+    aux,
+    x = "Model",
+    y = "AUC",
+    facet.by = "Training.dataset",
+    add.params = list(color = "lightgray", size = 1.5),
+    font.label = list(color = "white", size = 12,  vjust = 0.5),     
+    fill = "Model",
+    sorting = "none",
+    palette = ggpubr::get_palette(palette = "jco", 15),
+    color = "Model",
+    title = paste0("Gender: ", i, "\nCpGs: ",  unique(aux$cpgs.label), " (n = ",unique(aux$Number.of.common.CpGs.Training.and.Testing.),")"),
+    label = round(aux$AUC,digits = 3),
+    add = "segments",                             # Add segments from y = 0 to dots
+    rotate = TRUE,                               # Rotate vertically
+    dot.size = 13  
+  )  + #ggsci::scale_fill_jco() + 
+    #ggsci::scale_color_jco() + 
+    theme(legend.position="none")  + 
+    ylim(0.4,0.8) + 
+    ggpubr::theme_cleveland()
+  return(p)
+})
+
+ggpubr::ggarrange(plotlist = plot.list,nrow = length(plot.list)) 
+
+ggpubr::ggarrange(plotlist = plot.list,nrow = length(plot.list)) %>% 
+  ggsave(
+    filename = "~/TBL Dropbox/Wei Zhang/AD-meta-analysis-blood-samples-bySex/analysis_results/Methylation_risk_score/withSmoke/out_of_samples_auc_dotchart_single_cpgs_with_Gran_without_CDT8_meta_estimate.pdf",
+    width = 20,height = 20
+  )
+
+```
+
+
+```{R fig.height=12, fig.width=20, warning=FALSE}
+final.table$AUC <- final.table$AUC %>% as.numeric()
+final.table$Model <- factor(
+  final.table$Model,
+  levels = rev(unique(final.table$Model[order(stringr::str_length(final.table$Model))]))
+)
+
+final.table.without.cross <- final.table %>% dplyr::filter(cpgs.label == "Sig cpgs in AD vs CN")
+
+plot.list <- plyr::alply(final.table.without.cross$Sex %>% unique,.margins = 1,.fun = function(i){
+  
+  aux <-  final.table.without.cross %>% dplyr::filter(Sex %in% i) %>% 
+    dplyr::filter(use.EPIC.cpgs  == FALSE & Impute.NA.cpgs.with.mean.for.each.sample == FALSE & Age == "Real" & Training.dataset == "AIBL")
+  print(round(range(aux$AUC),digits = 2))
+    aux <- aux[aux$MRS.estimates.source == "meta-analysis",]
+
+  p <- ggpubr::ggdotchart(
+    aux,
+    x = "Model",
+    y = "AUC",
+    facet.by = "Training.dataset",
+    add.params = list(color = "lightgray", size = 1.5),
+    font.label = list(color = "white", size = 12,  vjust = 0.5),     
+    fill = "Model",
+    sorting = "none",
+    color = "Model",
+    palette = ggpubr::get_palette(palette = "jco", 15),
+    title = paste0("Gender: ", i, "\nCpGs: ",  unique(aux$cpgs.label), " (n = ",unique(aux$Number.of.common.CpGs.Training.and.Testing.),")"),
+    label = round(aux$AUC,digits = 3),
+    add = "segments",                             # Add segments from y = 0 to dots
+    rotate = TRUE,                               # Rotate vertically
+    dot.size = 13  
+  )  + #ggsci::scale_fill_jco() + 
+    #ggsci::scale_color_jco() + 
+    theme(legend.position="none")  + 
+    ylim(0.45,0.76) + 
+    ggpubr::theme_cleveland()
+  
+  if(i != unique(final.table.without.cross$Sex[1])){
+    p <- p +  theme(
+      axis.ticks.y = element_blank(),
+      axis.text.y = element_blank()
+    )
+  }
+  return(p)
+})
+
+ggpubr::ggarrange(plotlist = plot.list,nrow = length(plot.list)) 
+
+ggpubr::ggarrange(plotlist = plot.list,widths = c(2.3,1),ncol = length(plot.list)) %>% 
+  ggsave(
+    filename = "~/TBL Dropbox/Wei Zhang/AD-meta-analysis-blood-samples-bySex/analysis_results/Methylation_risk_score/withSmoke/out_of_samples_auc_dotchart_single_cpgs_AIBL_only_with_Gran_without_CDT8_meta_estimate.pdf",
+    width = 12,height = 10
+  )
+
+
+```
+
+```{R fig.height=12, fig.width=20, warning=FALSE}
+final.table$AUC <- final.table$AUC %>% as.numeric()
+final.table$Model <- factor(
+  final.table$Model,
+  levels = rev(unique(final.table$Model[order(stringr::str_length(final.table$Model))]))
+)
+
+final.table.without.cross <- final.table %>% dplyr::filter(cpgs.label == "Cpgs in sig. DMR + Sig cpgs in AD vs CN")
+
+plot.list <- plyr::alply(final.table.without.cross$Sex %>% unique,.margins = 1,.fun = function(i){
+  
+  aux <-  final.table.without.cross %>% dplyr::filter(Sex %in% i) %>% 
+    dplyr::filter(use.EPIC.cpgs  == FALSE & Impute.NA.cpgs.with.mean.for.each.sample == FALSE & Age == "Real" & MRS.estimates.source == "meta-analysis")
+  
+  p <- ggpubr::ggdotchart(
+    aux,
+    x = "Model",
+    y = "AUC",
+    facet.by = "Training.dataset",
+    add.params = list(color = "lightgray", size = 1.5),
+    font.label = list(color = "white", size = 12,  vjust = 0.5),     
+    fill = "Model",
+    sorting = "none",
+    color = "Model",
+    palette = ggpubr::get_palette(palette = "jco", 15),
+    title = paste0("Gender: ", i, "\nCpGs: ",  unique(aux$cpgs.label), " (n = ",unique(aux$Number.of.common.CpGs.Training.and.Testing.),")"),
+    label = round(aux$AUC,digits = 3),
+    add = "segments",                             # Add segments from y = 0 to dots
+    rotate = TRUE,                               # Rotate vertically
+    dot.size = 13  
+  )  + #ggsci::scale_fill_jco() + 
+    #ggsci::scale_color_jco() + 
+    theme(legend.position = "none")  + 
+    ylim(0.45,0.76) + 
+    ggpubr::theme_cleveland()
+  return(p)
+})
+
+ggpubr::ggarrange(plotlist = plot.list,nrow = length(plot.list)) 
+
+ggpubr::ggarrange(plotlist = plot.list,nrow = length(plot.list)) %>% 
+  ggsave(
+      filename = "~/TBL Dropbox/Wei Zhang/AD-meta-analysis-blood-samples-bySex/analysis_results/Methylation_risk_score/withSmoke/out_of_samples_auc_dotchart_AD_and_DMR_with_Gran_without_CDT8_meta_estimates.pdf",
+    width = 20,height = 20
+  )
+
+```
+
+
+```{R fig.height=12, fig.width=20, warning=FALSE}
+final.table$AUC <- final.table$AUC %>% as.numeric()
+final.table$Model <- factor(
+  final.table$Model,
+  levels = rev(unique(final.table$Model[order(stringr::str_length(final.table$Model))]))
+)
+
+final.table.without.cross <- final.table %>% dplyr::filter(cpgs.label == "Sig cpgs in AD vs CN + Interaction CpGs")
+
+plot.list <- plyr::alply(final.table.without.cross$Sex %>% unique,.margins = 1,.fun = function(i){
+  
+  aux <-  final.table.without.cross %>% dplyr::filter(Sex %in% i) %>% 
+    dplyr::filter(use.EPIC.cpgs  == FALSE & Impute.NA.cpgs.with.mean.for.each.sample == FALSE & Age == "Real" & MRS.estimates.source == "AIBL")
+  
+  p <- ggpubr::ggdotchart(
+    aux,
+    x = "Model",
+    y = "AUC",
+    facet.by = "Training.dataset",
+    add.params = list(color = "lightgray", size = 1.5),
+    font.label = list(color = "white", size = 12,  vjust = 0.5),     
+    fill = "Model",
+    sorting = "none",
+    color = "Model",
+    palette = ggpubr::get_palette(palette = "jco", 15),
+    title = paste0("Gender: ", i, "\nCpGs: ",  unique(aux$cpgs.label), " (n = ",unique(aux$Number.of.common.CpGs.Training.and.Testing.),")"),
+    label = round(aux$AUC,digits = 3),
+    add = "segments",                             # Add segments from y = 0 to dots
+    rotate = TRUE,                               # Rotate vertically
+    dot.size = 13  
+  )  + #ggsci::scale_fill_jco() + 
+    #ggsci::scale_color_jco() + 
+    theme(legend.position = "none")  + 
+    ylim(0.40,0.76) + 
+    ggpubr::theme_cleveland()
+  return(p)
+})
+
+ggpubr::ggarrange(plotlist = plot.list,nrow = length(plot.list)) 
+
+ggpubr::ggarrange(plotlist = plot.list,nrow = length(plot.list)) %>% 
+  ggsave(
+      filename = "~/TBL Dropbox/Wei Zhang/AD-meta-analysis-blood-samples-bySex/analysis_results/Methylation_risk_score/withSmoke/out_of_samples_auc_dotchart_AD_and_Interaction_with_Gran_without_CDT8_AIBL_estimates.pdf",
+    width = 20,height = 20
+  )
+
+```
+
+
+```{R fig.height=12, fig.width=20, warning=FALSE}
+final.table$AUC <- final.table$AUC %>% as.numeric()
+final.table$Model <- factor(
+  final.table$Model,
+  levels = rev(unique(final.table$Model[order(stringr::str_length(final.table$Model))]))
+)
+
+final.table.with.cross <- final.table %>% dplyr::filter(cpgs.label == "Cpgs in sig. DMR + Sig cpgs in AD vs CN + cross-tissue single CpGs")
+
+plot.list <- plyr::alply(final.table.with.cross$Sex %>% unique,.margins = 1,.fun = function(i){
+  
+  aux <-  final.table.with.cross %>% dplyr::filter(Sex %in% i) %>% 
+    dplyr::filter(use.EPIC.cpgs  == FALSE & Impute.NA.cpgs.with.mean.for.each.sample == FALSE & Age == "Real"& MRS.estimates.source == "meta-analysis")
+  print(round(range(aux$AUC),digits = 2))
+  p <- ggpubr::ggdotchart(
+    aux,
+    x = "Model",
+    y = "AUC",
+    facet.by = "Training.dataset",
+    add.params = list(color = "lightgray", size = 1.5),
+    font.label = list(color = "white", size = 12,  vjust = 0.5),     
+    fill = "Model",
+    sorting = "none",
+    color = "Model",
+    palette = ggpubr::get_palette(palette = "jco", 15),
+    title = paste0("Gender: ", i, "\nCpGs: ",  unique(aux$cpgs.label), " (n = ",unique(aux$Number.of.common.CpGs.Training.and.Testing.),")"),
+    label = round(aux$AUC,digits = 3),
+    add = "segments",                             # Add segments from y = 0 to dots
+    rotate = TRUE,                               # Rotate vertically
+    dot.size = 13  
+  )  + #ggsci::scale_fill_jco() + 
+    #ggsci::scale_color_jco() + 
+    theme(legend.position="none")  + 
+    ylim(0.45,0.76) + 
+    ggpubr::theme_cleveland()
+  return(p)
+})
+
+ggpubr::ggarrange(plotlist = plot.list,nrow = length(plot.list)) 
+
+ggpubr::ggarrange(plotlist = plot.list,nrow = length(plot.list)) %>% 
+  ggsave(
+    filename = "~/TBL Dropbox/Wei Zhang/AD-meta-analysis-blood-samples-bySex/analysis_results/Methylation_risk_score/withSmoke/out_of_samples_auc_dotchart_AD_and_DMR_and_cross_with_Gran_without_CDT8_meta_estimates.pdf",
+    width = 20,height = 20
+  )
+
+```
+
+
+
+```{R fig.height=12, fig.width=20, warning=FALSE}
+final.table$AUC <- final.table$AUC %>% as.numeric()
+final.table$Model <- factor(
+  final.table$Model,
+  levels = rev(unique(final.table$Model[order(stringr::str_length(final.table$Model))]))
+)
+
+final.table.with.cross <- final.table %>% dplyr::filter(cpgs.label ==  "Sig cpgs in AD vs CN + cross-tissue single CpGs")
+
+plot.list <- plyr::alply(final.table.with.cross$Sex %>% unique,.margins = 1,.fun = function(i){
+  
+  aux <-  final.table.with.cross %>% dplyr::filter(Sex %in% i) %>% 
+    dplyr::filter(use.EPIC.cpgs  == FALSE & Impute.NA.cpgs.with.mean.for.each.sample == FALSE & Age == "Real" & MRS.estimates.source == "meta-analysis" )
+  #aux <- aux[aux$MRS.estimates.source == "AIBL",]
+  print(round(range(aux$AUC),digits = 2))
+  p <- ggpubr::ggdotchart(
+    aux,
+    x = "Model",
+    y = "AUC",
+    facet.by = "Training.dataset",
+    add.params = list(color = "lightgray", size = 1.5),
+    font.label = list(color = "white", size = 12,  vjust = 0.5),     
+    fill = "Model",
+    sorting = "none",
+    color = "Model",
+    palette = ggpubr::get_palette(palette = "jco", 15),
+    title = paste0("Gender: ", i, " - CpGs: ",  unique(aux$cpgs.label)),
+    label = round(aux$AUC,digits = 3),
+    add = "segments",                             # Add segments from y = 0 to dots
+    rotate = TRUE,                               # Rotate vertically
+    dot.size = 13  
+  )  + #ggsci::scale_fill_jco() + 
+    #ggsci::scale_color_jco() + 
+    theme(legend.position="none")  + 
+    ylim(0.45,0.76) + 
+    ggpubr::theme_cleveland()
+  return(p)
+})
+
+ggpubr::ggarrange(plotlist = plot.list,nrow = length(plot.list)) 
+
+ggpubr::ggarrange(plotlist = plot.list,nrow = length(plot.list)) %>% 
+  ggsave(
+    filename = "~/TBL Dropbox/Wei Zhang/AD-meta-analysis-blood-samples-bySex/analysis_results/Methylation_risk_score/withSmoke/out_of_samples_auc_dotchart_AD_with_cross_with_Gran_without_CDT8_meta_estimates.pdf",
+    width = 20,height = 20
+  )
+
+```
+
+
+```{R fig.height=12, fig.width=20, warning=FALSE}
+final.table$AUC <- final.table$AUC %>% as.numeric()
+final.table$Model <- factor(
+  final.table$Model,
+  levels = rev(unique(final.table$Model[order(stringr::str_length(final.table$Model))]))
+)
+
+final.table.with.cross <- final.table %>% dplyr::filter(cpgs.label == "Cpgs in sig. DMR + Sig cpgs in AD vs CN + cross-tissue single CpGs + Interaction CpGs")
+
+plot.list <- plyr::alply(final.table.with.cross$Sex %>% unique,.margins = 1,.fun = function(i){
+  
+  aux <-  final.table.with.cross %>% dplyr::filter(Sex %in% i) %>% 
+    dplyr::filter(use.EPIC.cpgs  == FALSE & Impute.NA.cpgs.with.mean.for.each.sample == FALSE & Age == "Real"& MRS.estimates.source == "meta-analysis")
+  print(round(range(aux$AUC),digits = 2))
+  p <- ggpubr::ggdotchart(
+    aux,
+    x = "Model",
+    y = "AUC",
+    facet.by = "Training.dataset",
+    add.params = list(color = "lightgray", size = 1.5),
+    font.label = list(color = "white", size = 12,  vjust = 0.5),     
+    fill = "Model",
+    sorting = "none",
+    color = "Model",
+    palette = ggpubr::get_palette(palette = "jco", 15),
+    title = paste0("Gender: ", i, "\nCpGs: ",  unique(aux$cpgs.label), " (n = ",unique(aux$Number.of.common.CpGs.Training.and.Testing.),")"),
+    label = round(aux$AUC,digits = 3),
+    add = "segments",                             # Add segments from y = 0 to dots
+    rotate = TRUE,                               # Rotate vertically
+    dot.size = 13  
+  )  + #ggsci::scale_fill_jco() + 
+    #ggsci::scale_color_jco() + 
+    theme(legend.position="none")  + 
+    ylim(0.45,0.76) + 
+    ggpubr::theme_cleveland()
+  return(p)
+})
+
+ggpubr::ggarrange(plotlist = plot.list,nrow = length(plot.list)) 
+
+ggpubr::ggarrange(plotlist = plot.list,nrow = length(plot.list)) %>% 
+  ggsave(
+    filename = "~/TBL Dropbox/Wei Zhang/AD-meta-analysis-blood-samples-bySex/analysis_results/Methylation_risk_score/withSmoke/out_of_samples_auc_dotchart_AD_and_DMR_and_cross_and_Interaction_with_Gran_without_CDT8_meta_estimates.pdf",
+    width = 20,height = 20
+  )
+
+```
+
+#### Final plot
+
+```{R fig.height=12, fig.width=20, warning=FALSE}
+final.table$AUC <- final.table$AUC %>% as.numeric()
+final.table$Model <- factor(
+  final.table$Model,
+  levels = rev(unique(final.table$Model[order(stringr::str_length(final.table$Model))]))
+)
+final.table.without.cross <- final.table %>% dplyr::filter(cpgs.label %in% c("Sig cpgs in AD vs CN", "Sig cpgs in AD vs CN + Interaction CpGs"))
+
+plot.list <- plyr::alply(final.table.without.cross$Sex %>% unique,.margins = 1,.fun = function(i){
+  
+  aux <-  final.table.without.cross %>% dplyr::filter(Sex %in% i) %>% 
+    dplyr::filter(use.EPIC.cpgs  == FALSE & Impute.NA.cpgs.with.mean.for.each.sample == FALSE & Age == "Real")
+  aux <- aux[aux$Training.dataset == "AIBL",]
+  aux <- aux[aux$MRS.estimates.source == "meta-analysis",]
+  aux <- aux[aux$Model %in% c(
+  "DIAGNOSIS ~ AGE",
+  "DIAGNOSIS ~ MRS ",
+  "DIAGNOSIS ~ B + NK + CD4T + Mono + Gran",
+  "DIAGNOSIS ~ MRS + AGE",
+  "DIAGNOSIS ~ MRS + B + NK + CD4T + Mono + Gran",
+  "DIAGNOSIS ~ AGE + B + NK + CD4T + Mono + Gran",
+  "DIAGNOSIS ~ MRS + AGE + B + NK + CD4T + Mono + Gran"),]
+  aux$Model <- factor(aux$Model, rev(c(
+  "DIAGNOSIS ~ AGE",
+  "DIAGNOSIS ~ MRS ",
+  "DIAGNOSIS ~ B + NK + CD4T + Mono + Gran",
+  "DIAGNOSIS ~ MRS + AGE",
+  "DIAGNOSIS ~ MRS + B + NK + CD4T + Mono + Gran",
+  "DIAGNOSIS ~ AGE + B + NK + CD4T + Mono + Gran",
+  "DIAGNOSIS ~ MRS + AGE + B + NK + CD4T + Mono + Gran")))
+  if(i == "Male") aux <- aux %>% filter(cpgs.label == "Sig cpgs in AD vs CN + Interaction CpGs") %>% mutate(cpgs.label = "Sig cpgs in Interaction")
+  if(i == "Female") aux <- aux %>% filter(cpgs.label == "Sig cpgs in AD vs CN")
+  
+  df <- tidyr::pivot_longer(data = aux,cols  = c("sensitivity","specificity","AUC"))
+  
+  p <- ggpubr::ggdotchart(
+    aux,
+    x = "Model",
+    y = "AUC",
+    facet.by = "Testing.dataset",
+    add.params = list(color = "lightgray", size = 1.5),
+    font.label = list(color = "white", size = 12,  vjust = 0.5),     
+    fill = "Model",
+    sorting = "none",
+    palette = ggpubr::get_palette(palette = "jco", 15),
+    color = "Model",
+    title = paste0("Gender: ", i, "\nCpGs: ",  unique(aux$cpgs.label), " (n = ",unique(aux$Number.of.common.CpGs.Training.and.Testing.),")"),
+    label = round(aux$AUC,digits = 3),
+    add = "segments",                             # Add segments from y = 0 to dots
+    rotate = TRUE,                               # Rotate vertically
+    dot.size = 13  
+  )  + #ggsci::scale_fill_jco() + 
+    #ggsci::scale_color_jco() + 
+    theme(legend.position="none")  + 
+    ylim(0.4,0.8) + 
+    ggpubr::theme_cleveland()
+  
+  return(p)
+})
+
+plot.list$`2` <- plot.list$`2` + xlab(NULL) +
+   theme(axis.text.y = element_blank())
+
+ggpubr::ggarrange(plotlist = plot.list,nrow = 1, widths = c(2,1)) 
+
+ggpubr::ggarrange(plotlist = plot.list,nrow = 1, widths = c(1.6,1)) %>% 
+  ggsave(
+    filename = "~/TBL Dropbox/Wei Zhang/AD-meta-analysis-blood-samples-bySex/analysis_results/Methylation_risk_score/withSmoke/out_of_samples_auc_dotchart_AIBL_only_AD_with_Gran_without_CDT8_meta_estimates_male_interaction.pdf",
+    width = 20,height = 10
+  )
+```
+
+
+```{R}
+
+library(pROC)
+
+loop.formulas <- c(
+  "DIAGNOSIS ~ MRS + AGE + B + NK + CD4T + Mono + Gran",
+  "DIAGNOSIS ~ MRS + AGE",
+  "DIAGNOSIS ~ AGE + B + NK + CD4T + Mono + Gran",
+  "DIAGNOSIS ~ AGE"
+)
+
+aux <- final.table[final.table$Sex == "Male" & final.table$Training.dataset == "AIBL" & final.table$cpgs.label == "Sig cpgs in AD vs CN + Interaction CpGs",] 
+aux <- aux %>% mutate(cpgs.label = "Sig cpgs in Interaction")
+aux %>% filter(
+  Model %in% loop.formulas & MRS.estimates.source == 'meta-analysis' & Age == "Real"
+) %>%
+  mutate(label_long=paste0(Model," (AUC = ",paste(round(AUC,2)), ")"),
+         label_AUC=paste0("AUC = ",paste(round(AUC,2)))) -> data.labels
+data.labels <- data.labels[match(loop.formulas, data.labels$Model),]
+
+rocs.male <- plyr::laply(loop.formulas,.fun = function(x){
+  roc_plot(
+    cpgs = NULL,
+    training.datasets = "AIBL",
+    cpgs.label = "Sig cpgs in AD vs CN + Interaction CpGs",
+    model.formula = x,
+    sex = "Male"
+  )
+})
+names(rocs.male) <- loop.formulas
+p.male <- ggroc(rocs.male, legacy.axes = TRUE) + ggplot2::theme_classic() + theme(legend.position="bottom") + guides(col = guide_legend(nrow = 4)) + theme(legend.title = element_blank()) + ggtitle(paste0("Gender: ", unique(aux$Sex), "\nCpGs: ",  unique(aux$cpgs.label), " (n = ",unique(aux$Number.of.common.CpGs.Training.and.Testing.),")")) + geom_abline(linetype = 2, color = "grey")  +
+  scale_color_discrete(labels=data.labels$label_long)
+
+
+aux <- final.table[final.table$Sex == "Female" & final.table$Training.dataset == "AIBL" & final.table$cpgs.label == "Sig cpgs in AD vs CN",]
+aux %>% filter(
+  Model %in% loop.formulas & MRS.estimates.source == 'meta-analysis' & Age == "Real"
+) %>%
+  mutate(label_long=paste0(Model," (AUC = ",paste(round(AUC,2)), ")"),
+         label_AUC=paste0("AUC = ",paste(round(AUC,2)))) -> data.labels
+data.labels <- data.labels[match(loop.formulas, data.labels$Model),]
+
+rocs.female <- plyr::laply(loop.formulas,.fun = function(x){
+  roc_plot(
+    cpgs = NULL,
+    training.datasets = "AIBL",
+    cpgs.label = "Sig cpgs in AD vs CN",
+    model.formula = x,
+    sex = "Female"
+  )
+})
+names(rocs.female) <- loop.formulas
+p.female <- ggroc(rocs.female, legacy.axes = TRUE) + ggplot2::theme_classic() + theme(legend.position="bottom") + guides(col = guide_legend(nrow = 4)) + theme(legend.title = element_blank()) + ggtitle(paste0("Gender: ", unique(aux$Sex), "\nCpGs: ",  unique(aux$cpgs.label), " (n = ",unique(aux$Number.of.common.CpGs.Training.and.Testing.),")")) + geom_abline(linetype = 2, color = "grey")  +
+  scale_color_discrete(labels=data.labels$label_long)
+
+
+p <- ggpubr::ggarrange(plotlist = list(p.male,p.female),nrow = 1)
+p %>% 
+  ggsave(
+    filename = "~/TBL Dropbox/Wei Zhang/AD-meta-analysis-blood-samples-bySex/analysis_results/Methylation_risk_score/withSmoke/ROC_Sig_cpgs_in_AD_vs_CN_with_Gran_without_CDT8_Interaction_in_male.pdf",
+    width = 12,height = 7
+  )
+
+```
+
+```{R, eval = F}
+load("~/TBL Dropbox/Tiago Silva/AD-meta-analysis-blood-samples-bySex/code/Methylation_Risk_scores/Data_AUC.rda")
+plyr::count(c(pheno.training.aibl.male$DIAGNOSIS,pheno.training.adni.male$DIAGNOSIS))
+
+
+plyr::count(c(pheno.training.aibl.male$DIAGNOSIS,pheno.training.adni.male$DIAGNOSIS))
+plyr::count(c(pheno.training.aibl.female$DIAGNOSIS,pheno.training.adni.female$DIAGNOSIS))
+pheno.training.aibl.female %>% dplyr::group_by(DIAGNOSIS) %>% summarise(mean(AGE))
+pheno.training.adni.female %>% as.data.frame %>% dplyr::group_by(DIAGNOSIS) %>% summarise(mean(AGE))
+
+pheno.training.aibl.male %>% dplyr::group_by(DIAGNOSIS) %>% summarise(mean(AGE))
+pheno.training.adni.male %>% as.data.frame %>% dplyr::group_by(DIAGNOSIS) %>% 
+  summarise(mean(pheno.training.adni.male$age_at_visit))
+```
+
+# Session info
+```{R}
+sessioninfo::session_info()
+```
+
+

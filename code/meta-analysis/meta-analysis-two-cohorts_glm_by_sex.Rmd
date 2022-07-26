@@ -1,0 +1,1331 @@
+---
+title: "Integrative meta-analysis of epigenome-wide association studies identifies genomic and epigenomics differences in the brain and the blood in Alzheimer’s disease"
+subtitle: "Meta-analysis dataset - using bacon inflation- and bias-corrected P-values"
+author:
+  - Tiago Chedraoui Silva^[University of Miami]
+  - Wei Zhang^[University of Miami]
+  - Lily Wang^[University of Miami]
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output:
+  rmarkdown::html_document:
+    highlight: breezedark
+    theme: lumen
+    toc: true
+    number_sections: true
+    df_print: paged
+    code_download: false
+    toc_float:
+      collapsed: yes
+    toc_depth: 3
+editor_options:
+  chunk_output_type: inline     
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE)
+knitr::opts_knit$set(root.dir = "../..")
+```
+
+
+
+# Main libraries and configuration
+
+```{R, message = FALSE, results = 'hide'}
+library(dplyr)
+library(ExperimentHub)
+library(GenomicRanges)
+library(tidyr)
+```
+
+# Meta-analysis of Genomic Regions: Single-cpg
+
+## Paths
+```{R}
+dir.base <- "~/TBL Dropbox/Wei Zhang/AD-meta-analysis-blood-samples-bySex"
+dir.base.data <- file.path(dir.base,"../AD-meta-analysis-blood-samples/")
+dir.data.aux <- file.path(dir.base.data,"datasets/Aux/") 
+dir.results <- file.path(dir.base,"analysis_results")
+dir.result.meta.analysis <- file.path(dir.results, "meta_analysis/Logistic_regression_model/withSmokePrbs")
+dir.result.meta.analysis.ad <- file.path(dir.result.meta.analysis, "AD_vs_CN/")
+for(p in grep("dir",ls(),value = T)) dir.create(get(p),recursive = TRUE,showWarnings = FALSE)
+```
+
+```{R}
+brain.sex.meta.analysis.female <- readxl::read_xlsx(
+  file.path(dir.base,"../AD_metaAnalysis_bySex/DRAFT_2-6-2021/ALL_SupplementaryTables_2-20-2020.xlsx"),
+  sheet = 3,
+  skip = 3
+)
+colnames(brain.sex.meta.analysis.female)[-1] <- paste0("Brain_sex_meta_analysis_",colnames(brain.sex.meta.analysis.female)[-1])
+
+brain.sex.meta.analysis.male <- readxl::read_xlsx(
+  file.path(dir.base,"../AD_metaAnalysis_bySex/DRAFT_2-6-2021/ALL_SupplementaryTables_2-20-2020.xlsx"),
+  sheet = 4,
+  skip = 3
+)
+colnames(brain.sex.meta.analysis.male)[-1] <- paste0("Brain_sex_meta_analysis_",colnames(brain.sex.meta.analysis.female)[-1])
+```
+
+## Import datasets and pre-process for each cohort 
+
+```{R, eval = TRUE}
+### No adjust for smoking scores
+library(dplyr)
+adni.results.files <- list.files(
+  path = file.path(dir.results, "ADNI/withSmoke/AD_CN/"),
+  pattern = "beta_with_inflation.csv",
+  recursive = TRUE,
+  full.names = TRUE,
+  ignore.case = TRUE
+)
+basename(adni.results.files)
+aibl.results.files <- list.files(
+  path = file.path(dir.results, "AIBL/single_cpg/withSmoke/"),
+  pattern = "beta_and_covaritates.*with_inflation.csv",
+  recursive = TRUE,
+  full.names = TRUE,
+  ignore.case = TRUE
+)
+basename(aibl.results.files)
+results.files <- c(adni.results.files, aibl.results.files)
+basename(results.files)
+### Adjust for smoking scores
+adni.results.files.SSc <- list.files(
+  path = file.path(dir.results, "ADNI/withSmoke/AD_CN/"),
+  pattern = "smoking_with_inflation.csv",
+  recursive = TRUE,
+  full.names = TRUE,
+  ignore.case = TRUE
+)
+basename(adni.results.files.SSc)
+aibl.results.files.SSc <- list.files(
+  path = file.path(dir.results, "AIBL/single_cpg/withSmoke/"),
+  pattern = "smoking.*with_inflation.csv",
+  recursive = TRUE,
+  full.names = TRUE,
+  ignore.case = TRUE
+)
+basename(aibl.results.files.SSc)
+results.files.SSc <- c(adni.results.files.SSc, aibl.results.files.SSc)
+basename(aibl.results.files.SSc)
+### ADNI last visit glm
+adni.results.files.last.visit <- list.files(
+  path = file.path(dir.results, "ADNI/withSmoke/AD_CN_Last_visit_Logistic_regression_model/"),
+  pattern = "beta_with_inflation.csv",
+  recursive = TRUE,
+  full.names = TRUE,
+  ignore.case = TRUE
+)
+basename(adni.results.files.last.visit)
+result.files.aibl.adni.last.visit <- c(aibl.results.files,adni.results.files.last.visit)
+basename(result.files.aibl.adni.last.visit)
+```
+
+## Create a merged final dataset 
+### No adjust SSc
+
+```{R, eval = FALSE}
+
+list.of.results <- plyr::alply(results.files,.margins = 1,.fun = function(f){
+  data <- readr::read_csv(f, col_types = readr::cols())
+  dataset <- paste0(
+    stringr::str_extract(basename(f),"AIBL|ADNI|AD_vs_CN"),
+    "_",
+    stringr::str_extract(toupper(basename(f)),"FEMALE|MALE")
+  )
+  data <- data %>% dplyr::select(contains(c("cpg","bacon","Std..Error","fdr","tValue","z.value","Pr...z..","t.value","Error","Estimate","Pr...t..")))
+  
+  data <- data %>% rename_with(
+    .fn = function(x) {
+      paste0(dataset,"_",x)
+    },
+    contains(c("bacon","fdr","tValue","z.value","Pr...z..","t.value","Error","Estimate","Pr...t.."))
+  )
+  data  
+})
+names(list.of.results) <- paste0(
+  stringr::str_extract(basename(results.files),"AIBL|ADNI|AD_vs_CN"),
+  "_",
+  stringr::str_extract(toupper(basename(results.files)),"FEMALE|MALE")
+)
+
+multi_cohorts_AD_vs_CN.female <- Reduce(
+  function(x,y, ...) inner_join(
+    x,
+    y,
+    ..., 
+    by = "cpg"
+  ),
+  list.of.results[grep("_FEMALE",names(list.of.results))]
+) %>% unique()
+
+multi_cohorts_AD_vs_CN.male <- Reduce(
+  function(x,y, ...) inner_join(
+    x,
+    y,
+    ..., 
+    by = "cpg"
+  ),
+  list.of.results[grep("_MALE",names(list.of.results))]
+) %>% unique()
+
+lapply(list.of.results,dim)
+dim(multi_cohorts_AD_vs_CN.female)
+dim(multi_cohorts_AD_vs_CN.male)
+```
+
+### Adjust SSc
+
+```{r}
+list.of.results.SSc <- plyr::alply(results.files.SSc,.margins = 1,.fun = function(f){
+  data <- readr::read_csv(f, col_types = readr::cols())
+  dataset <- paste0(
+    stringr::str_extract(basename(f),"AIBL|ADNI|AD_vs_CN"),
+    "_",
+    stringr::str_extract(toupper(basename(f)),"FEMALE|MALE")
+  )
+  data <- data %>% dplyr::select(contains(c("cpg","bacon","Std..Error","fdr","tValue","z.value","Pr...z..","t.value","Error","Estimate","Pr...t..")))
+  
+  data <- data %>% rename_with(
+    .fn = function(x) {
+      paste0(dataset,"_",x)
+    },
+    contains(c("bacon","fdr","tValue","z.value","Pr...z..","t.value","Error","Estimate","Pr...t.."))
+  )
+  data  
+})
+names(list.of.results.SSc) <- paste0(
+  stringr::str_extract(basename(results.files.SSc),"AIBL|ADNI|AD_vs_CN"),
+  "_",
+  stringr::str_extract(toupper(basename(results.files.SSc)),"FEMALE|MALE")
+)
+
+multi_cohorts_AD_vs_CN.female.SSc <- Reduce(
+  function(x,y, ...) inner_join(
+    x,
+    y,
+    ..., 
+    by = "cpg"
+  ),
+  list.of.results.SSc[grep("_FEMALE",names(list.of.results.SSc))]
+) %>% unique()
+
+multi_cohorts_AD_vs_CN.male.SSc <- Reduce(
+  function(x,y, ...) inner_join(
+    x,
+    y,
+    ..., 
+    by = "cpg"
+  ),
+  list.of.results.SSc[grep("_MALE",names(list.of.results.SSc))]
+) %>% unique()
+
+lapply(list.of.results.SSc,dim)
+dim(multi_cohorts_AD_vs_CN.female.SSc)
+dim(multi_cohorts_AD_vs_CN.male.SSc)
+```
+
+### ADNI last visit and AIBL
+
+```{r}
+list.of.results.last.visit <- plyr::alply(result.files.aibl.adni.last.visit,.margins = 1,.fun = function(f){
+  data <- readr::read_csv(f, col_types = readr::cols())
+  dataset <- paste0(
+    stringr::str_extract(basename(f),"AIBL|ADNI|AD_vs_CN"),
+    "_",
+    stringr::str_extract(toupper(basename(f)),"FEMALE|MALE")
+  )
+  data <- data %>% dplyr::select(contains(c("cpg","bacon","Std..Error","fdr","tValue","z.value","Pr...z..","t.value","Error","Estimate","Pr...t..")))
+  
+  data <- data %>% rename_with(
+    .fn = function(x) {
+      paste0(dataset,"_",x)
+    },
+    contains(c("bacon","fdr","tValue","z.value","Pr...z..","t.value","Error","Estimate","Pr...t.."))
+  )
+  data  
+})
+names(list.of.results.last.visit) <- paste0(
+  stringr::str_extract(basename(result.files.aibl.adni.last.visit),"AIBL|ADNI|AD_vs_CN"),
+  "_",
+  stringr::str_extract(toupper(basename(result.files.aibl.adni.last.visit)),"FEMALE|MALE")
+)
+
+multi_cohorts_AD_vs_CN.last.visit.female <- Reduce(
+  function(x,y, ...) inner_join(
+    x,
+    y,
+    ..., 
+    by = "cpg"
+  ),
+  list.of.results.last.visit[grep("_FEMALE",names(list.of.results.last.visit))]
+) %>% unique()
+
+multi_cohorts_AD_vs_CN.last.visit.male <- Reduce(
+  function(x,y, ...) inner_join(
+    x,
+    y,
+    ..., 
+    by = "cpg"
+  ),
+  list.of.results.last.visit[grep("_MALE",names(list.of.results.last.visit))]
+) %>% unique()
+
+lapply(list.of.results.last.visit,dim)
+dim(multi_cohorts_AD_vs_CN.last.visit.female)
+dim(multi_cohorts_AD_vs_CN.last.visit.male)
+```
+
+
+## Meta analysis 
+```{R, eval = FALSE}
+library(meta)
+
+doParallel::registerDoParallel(cores = 10)
+calculate_meta_analysis <- function(multi_cohorts){
+  plyr::adply(
+    .data = multi_cohorts, 
+    .margins = 1, 
+    .fun =  function(row){
+      
+      est <- row[grep("Estimate.bacon",colnames(row))] %>% as.numeric
+      
+      direction <-  paste(
+        ifelse(
+          is.na(est), ".",
+          ifelse(est > 0, "+", "-")
+        ), collapse = "")
+      
+      se <- row[grep("StdErr.bacon",colnames(row))] %>% as.numeric
+      cohort <- gsub("_StdErr.bacon","",grep("StdErr.bacon",colnames(row),value = T))
+      df <- data.frame(
+        cohort = cohort,
+        est = est,
+        se = se,
+        stringsAsFactors = FALSE
+      )
+      
+      f <- metagen(
+        TE = est,
+        seTE = se,
+        data = df,
+        sm = "OR"
+      )
+      
+      tibble::tibble(
+        cpg = row$cpg,
+        estimate.bacon = f$TE.fixed,
+        se.bacon = f$seTE.fixed,
+        pVal.fixed.bacon = f$pval.fixed,
+        pVal.random.bacon = f$pval.random,
+        pValQ.bacon = f$pval.Q,
+        direction.bacon = direction
+      )
+    }  , .progress = "time",
+    .parallel = T,
+    .id = NULL
+  )
+}
+calculate_meta_analysis_pvalue <- function(meta_df, pvalue.type = "fixed"){
+  ### create final pVal
+  if (pvalue.type == "fixed"){
+    meta_df$pVal.final.bacon <- meta_df$pVal.fixed.bacon
+  } else if (pvalue.type == "random"){
+    meta_df$pVal.final.bacon <- meta_df$pVal.random.bacon
+  } else {
+    print("both")
+    meta_df$pVal.final.bacon <- ifelse(
+      meta_df$pValQ.bacon > 0.05, meta_df$pVal.fixed.bacon, meta_df$pVal.random.bacon
+    )
+  }
+  ### calculate FDR
+  meta_df$fdr.bacon <- p.adjust(meta_df$pVal.final.bacon, method = "fdr")
+  ### order meta_df
+  meta_final_df <- meta_df[, c(grep("_",colnames(meta_df),invert = T),
+                               grep("_",colnames(meta_df),invert = F))
+  ]
+  meta_final_ordered_df <- meta_final_df[order(meta_final_df$pVal.final.bacon),]
+  return(meta_final_ordered_df)
+}
+```
+
+### No adjust smoking
+
+```{R meta_ad, eval = FALSE}
+meta_df_AD_vs_CN_fixed_effect.female <- multi_cohorts_AD_vs_CN.female %>% 
+  calculate_meta_analysis() %>% 
+  calculate_meta_analysis_pvalue(pvalue.type = "fixed")
+
+readr::write_csv(
+  meta_df_AD_vs_CN_fixed_effect.female  %>% as.data.frame(),
+  file = paste0(dir.result.meta.analysis.ad, "FEMALE_meta_analysis_glm_fixed_effect_ADNI_and_AIBL_AD_vs_CN_single_cpg.csv")
+)
+
+meta_df_AD_vs_CN_fixed_effect.male <- multi_cohorts_AD_vs_CN.male %>% 
+  calculate_meta_analysis()  %>% 
+  calculate_meta_analysis_pvalue(pvalue.type = "fixed")
+
+readr::write_csv(
+  meta_df_AD_vs_CN_fixed_effect.male  %>% as.data.frame(),
+  file = paste0(dir.result.meta.analysis.ad, "MALE_meta_analysis_glm_fixed_effect_ADNI_and_AIBL_AD_vs_CN_single_cpg.csv")
+)
+
+```
+
+
+### Adjust smoking
+
+```{R meta_ad_SSc, eval = FALSE}
+meta_df_AD_vs_CN_fixed_effect.female.SSc <- multi_cohorts_AD_vs_CN.female.SSc %>% 
+  calculate_meta_analysis() %>% 
+  calculate_meta_analysis_pvalue(pvalue.type = "fixed")
+
+readr::write_csv(
+  meta_df_AD_vs_CN_fixed_effect.female.SSc  %>% as.data.frame(),
+  file = paste0(dir.result.meta.analysis.ad, "FEMALE_meta_analysis_glm_fixed_effect_ADNI_and_AIBL_AD_vs_CN_adjust_smoking_single_cpg.csv")
+)
+
+meta_df_AD_vs_CN_fixed_effect.male.SSc <- multi_cohorts_AD_vs_CN.male.SSc %>% 
+  calculate_meta_analysis()  %>% 
+  calculate_meta_analysis_pvalue(pvalue.type = "fixed")
+
+readr::write_csv(
+  meta_df_AD_vs_CN_fixed_effect.male.SSc  %>% as.data.frame(),
+  file = paste0(dir.result.meta.analysis.ad, "MALE_meta_analysis_glm_fixed_effect_ADNI_and_AIBL_AD_vs_CN_adjust_smoking_single_cpg.csv")
+)
+
+```
+
+### Last visit
+
+```{R meta_ad_last_visit, eval = FALSE}
+meta_df_AD_vs_CN_fixed_effect.female.last.visit <- multi_cohorts_AD_vs_CN.last.visit.female %>% 
+  calculate_meta_analysis() %>% 
+  calculate_meta_analysis_pvalue(pvalue.type = "fixed")
+
+readr::write_csv(
+  meta_df_AD_vs_CN_fixed_effect.female.last.visit  %>% as.data.frame(),
+  file = paste0(dir.result.meta.analysis.ad, "FEMALE_meta_analysis_glm_fixed_effect_ADNI_and_AIBL_AD_vs_CN_last_visit_single_cpg.csv")
+)
+
+meta_df_AD_vs_CN_fixed_effect.male.last.visit <- multi_cohorts_AD_vs_CN.last.visit.male %>% 
+  calculate_meta_analysis()  %>% 
+  calculate_meta_analysis_pvalue(pvalue.type = "fixed")
+
+readr::write_csv(
+  meta_df_AD_vs_CN_fixed_effect.male.last.visit  %>% as.data.frame(),
+  file = paste0(dir.result.meta.analysis.ad, "MALE_meta_analysis_glm_fixed_effect_ADNI_and_AIBL_AD_vs_CN_last_visit_single_cpg.csv")
+)
+```
+
+## Add annotation to input cpgs
+
+
+```{R}
+library(GenomicRanges)
+library(dplyr)
+data <- readr::read_tsv(
+  file.path(dir.base.data,"datasets/nasser_2021/AllPredictions.AvgHiC.ABC0.015.minus150.ForABCPaperV3.txt.gz")
+)
+CellType.selected <- readxl::read_xlsx(
+   file.path(dir.base.data,"code/annotations/Nassser study selected biosamples.xlsx"),col_names = FALSE
+   ) %>% dplyr::pull(1)
+
+data.filtered <- data %>% dplyr::filter(CellType %in% CellType.selected) %>% 
+  dplyr::filter(!isSelfPromoter)  %>% 
+  dplyr::filter(class != "promoter")
+
+nasser.enhancer.gr <- data.filtered %>% makeGRangesFromDataFrame(
+  start.field = "start",
+  end.field = "end",
+  seqnames.field = "chr",
+  keep.extra.columns = TRUE
+)
+
+cpg.gr <- IlluminaHumanMethylationEPICanno.ilm10b4.hg19::Locations %>%
+  GenomicRanges::makeGRangesFromDataFrame(start.field = "pos",end.field = "pos")
+cpg.gr <- cpg.gr + 250
+cpg.gr$cpg <- rownames(IlluminaHumanMethylationEPICanno.ilm10b4.hg19::Locations)
+hits <- findOverlaps(cpg.gr,nasser.enhancer.gr) %>% as.data.frame()
+
+cpgs.ad.is.enahncer.nasser <- data.frame(
+  "Cpg" = cpg.gr[hits$queryHits,]$cpg,
+  "Cell_type" = nasser.enhancer.gr$CellType[hits$subjectHits]
+) %>% unique %>% dplyr::group_by(Cpg) %>% summarise("Cell_type" = paste(Cell_type,collapse = ";"))
+```
+
+```{R, eval = FALSE}
+load(file.path(dir.data.aux,"meta_analysis_cpgs.rda"))
+great_HM450 <- get(load(file.path(dir.data.aux,"great_HM450_array_annotation.rda")))
+great_EPIC <- get(load(file.path(dir.data.aux,"great_EPIC_array_annotation.rda")))
+great <- unique(rbind(great_HM450,great_EPIC))
+load(file.path(dir.data.aux,"E073_15_coreMarks_segments.rda"))
+infinium.annot <- readxl::read_xlsx(file.path(dir.data.aux,"infinium-methylationepic-v-1-0-b5-manifest-file.xlsx"),skip = 7)
+
+
+add_annotation <- function(result){
+  result$cpg_in_EPIC <- result$cpg %in% rownames(IlluminaHumanMethylationEPICanno.ilm10b4.hg19::Locations)
+  result$cpg_in_hm450 <- result$cpg %in% rownames(IlluminaHumanMethylation450kanno.ilmn12.hg19::Locations)
+  
+  message("Creating aux objects")
+  Locations <- unique(rbind(
+    DataFrame(IlluminaHumanMethylationEPICanno.ilm10b4.hg19::Locations),
+    DataFrame(IlluminaHumanMethylation450kanno.ilmn12.hg19::Locations)
+  ))
+  
+  Islands.UCSC <- unique(rbind(
+    DataFrame(IlluminaHumanMethylationEPICanno.ilm10b4.hg19::Islands.UCSC),
+    DataFrame(IlluminaHumanMethylation450kanno.ilmn12.hg19::Islands.UCSC)
+  ))
+  
+  other.epic <- IlluminaHumanMethylationEPICanno.ilm10b4.hg19::Other[,c("UCSC_RefGene_Name","UCSC_RefGene_Group")]
+  other.epic$cpg <- rownames(other.epic)
+  other.hm450 <- IlluminaHumanMethylation450kanno.ilmn12.hg19::Other[,c("UCSC_RefGene_Name","UCSC_RefGene_Group")]
+  other.hm450$cpg <- rownames(other.hm450)
+  
+  Other <- unique(rbind(
+    other.epic,
+    other.hm450
+  ))
+  
+  
+  message("Annotating sig in brain")
+  result$sig.in.brain <- result$cpg %in% brain.meta.analysis.cpgs
+  
+  message("Annotating great")
+  result$GREAT_annotation <- great$GREAT_annotation[match(result$cpg,great$cpg)]
+  
+  message("Annotating location")
+  result$pos <- Locations[result$cpg,]$pos
+  result$chr <- Locations[result$cpg,]$chr
+  
+  message("Annotating island")
+  result$Islands.UCSC.Relation_to_Island <- Islands.UCSC$Relation_to_Island[match(result$cpg,rownames(Islands.UCSC))] 
+  result$UCSC_RefGene_Name <- Other$UCSC_RefGene_Name[match(result$cpg,rownames(Other))] 
+  result$UCSC_RefGene_Group <- Other$UCSC_RefGene_Group[match(result$cpg,rownames(Other))]
+  
+  result$GencodeCompV12_NAME <- infinium.annot$GencodeCompV12_NAME[match(result$cpg,infinium.annot$IlmnID)]
+  result$GencodeCompV12_Accession <- infinium.annot$GencodeCompV12_Accession[match(result$cpg,infinium.annot$IlmnID)]
+  result$GencodeCompV12_Group <- infinium.annot$GencodeCompV12_Group[match(result$cpg,infinium.annot$IlmnID)]
+  
+  message("Annotating E073_15_coreMarks_segments")
+  result.gr <- result %>% makeGRangesFromDataFrame(start.field = "pos",end.field = "pos",seqnames.field = "chr")
+  hits <- findOverlaps(result.gr,ChmmModels.gr) %>% as.data.frame()
+  hits$state <- ChmmModels.gr$state[hits$subjectHits]
+  hits$cpg <- result$cpg[hits$queryHits]
+  result$E073_15_coreMarks_segments_state <- hits$state[match(result$cpg,hits$cpg)]
+  
+  message("Annotating enhancer")
+  result$nasser_is_enahncer <- result$cpg %in% cpgs.ad.is.enahncer.nasser$Cpg
+  result$nasser_enhancer_cell_type <- cpgs.ad.is.enahncer.nasser$Cell_type[match(result$cpg, cpgs.ad.is.enahncer.nasser$Cpg)]
+  
+  return(result)
+  
+}
+```
+
+### No adjust smoking score
+
+```{R, eval = FALSE}
+meta_df_AD_vs_CN.annotated.male <- meta_df_AD_vs_CN_fixed_effect.male %>% add_annotation()
+meta_df_AD_vs_CN.annotated.male <- dplyr::left_join(meta_df_AD_vs_CN.annotated.male, brain.sex.meta.analysis.male)
+meta_df_AD_vs_CN.annotated.sig.male <- meta_df_AD_vs_CN.annotated.male %>% dplyr::filter(pVal.final.bacon < 0.05) 
+
+
+
+readr::write_csv(
+  meta_df_AD_vs_CN.annotated.male  %>% as.data.frame(),
+  file = paste0(
+    dir.result.meta.analysis.ad,
+    "MALE_meta_analysis_glm_fixed_effect_ADNI_and_AIBL_AD_vs_CN_single_cpg_annotated.csv"
+  )
+)
+
+readr::write_csv(
+  meta_df_AD_vs_CN.annotated.sig.male  %>% as.data.frame(),
+  file = paste0(
+    dir.result.meta.analysis.ad,
+    "MALE_meta_analysis_glm_fixed_effect_ADNI_and_AIBL_AD_vs_CN_single_cpg_annotated_pvalue_cut_off_0_05.csv"
+  )
+)
+
+meta_df_AD_vs_CN.annotated.female <- meta_df_AD_vs_CN_fixed_effect.female %>% add_annotation()
+meta_df_AD_vs_CN.annotated.female <- dplyr::left_join(meta_df_AD_vs_CN.annotated.female, brain.sex.meta.analysis.female)
+
+meta_df_AD_vs_CN.annotated.sig.female <- meta_df_AD_vs_CN.annotated.female %>% dplyr::filter(pVal.final.bacon < 0.05) 
+
+readr::write_csv(
+  meta_df_AD_vs_CN.annotated.female  %>% as.data.frame(),
+  file = paste0(
+    dir.result.meta.analysis.ad,
+    "FEMALE_meta_analysis_glm_fixed_effect_ADNI_and_AIBL_AD_vs_CN_single_cpg_annotated.csv"
+  )
+)
+
+readr::write_csv(
+  meta_df_AD_vs_CN.annotated.sig.female  %>% as.data.frame(),
+  file = paste0(
+    dir.result.meta.analysis.ad,
+    "FEMALE_meta_analysis_glm_fixed_effect_ADNI_and_AIBL_AD_vs_CN_single_cpg_annotated_pvalue_cut_off_0_05.csv"
+  )
+)
+```
+
+### Adjust smoking score
+
+```{R, eval = FALSE}
+meta_df_AD_vs_CN.annotated.male.SSc <- meta_df_AD_vs_CN_fixed_effect.male.SSc %>% add_annotation()
+meta_df_AD_vs_CN.annotated.male.SSc <- dplyr::left_join(meta_df_AD_vs_CN.annotated.male.SSc, brain.sex.meta.analysis.male)
+meta_df_AD_vs_CN.annotated.sig.male.SSc <- meta_df_AD_vs_CN.annotated.male.SSc %>% dplyr::filter(pVal.final.bacon < 0.05) 
+
+
+
+readr::write_csv(
+  meta_df_AD_vs_CN.annotated.male.SSc  %>% as.data.frame(),
+  file = paste0(
+    dir.result.meta.analysis.ad,
+    "MALE_meta_analysis_glm_fixed_effect_ADNI_and_AIBL_AD_vs_CN_adjust_smoking_single_cpg_annotated.csv"
+  )
+)
+
+readr::write_csv(
+  meta_df_AD_vs_CN.annotated.sig.male.SSc  %>% as.data.frame(),
+  file = paste0(
+    dir.result.meta.analysis.ad,
+    "MALE_meta_analysis_glm_fixed_effect_ADNI_and_AIBL_AD_vs_CN_adjust_smoking_single_cpg_annotated_pvalue_cut_off_0_05.csv"
+  )
+)
+
+meta_df_AD_vs_CN.annotated.female.SSc <- meta_df_AD_vs_CN_fixed_effect.female.SSc %>% add_annotation()
+meta_df_AD_vs_CN.annotated.female.SSc <- dplyr::left_join(meta_df_AD_vs_CN.annotated.female.SSc, brain.sex.meta.analysis.female)
+
+meta_df_AD_vs_CN.annotated.sig.female.SSc <- meta_df_AD_vs_CN.annotated.female.SSc %>% dplyr::filter(pVal.final.bacon < 0.05) 
+
+readr::write_csv(
+  meta_df_AD_vs_CN.annotated.female.SSc  %>% as.data.frame(),
+  file = paste0(
+    dir.result.meta.analysis.ad,
+    "FEMALE_meta_analysis_glm_fixed_effect_ADNI_and_AIBL_AD_vs_CN_adjust_smoking_single_cpg_annotated.csv"
+  )
+)
+
+readr::write_csv(
+  meta_df_AD_vs_CN.annotated.sig.female.SSc  %>% as.data.frame(),
+  file = paste0(
+    dir.result.meta.analysis.ad,
+    "FEMALE_meta_analysis_glm_fixed_effect_ADNI_and_AIBL_AD_vs_CN_adjust_smoking_single_cpg_annotated_pvalue_cut_off_0_05.csv"
+  )
+)
+```
+
+
+### Last visit
+
+```{R, eval = FALSE}
+meta_df_AD_vs_CN.annotated.male.last.visit <- meta_df_AD_vs_CN_fixed_effect.male.last.visit %>% add_annotation()
+meta_df_AD_vs_CN.annotated.male.last.visit <- dplyr::left_join(meta_df_AD_vs_CN.annotated.male.last.visit, brain.sex.meta.analysis.male)
+meta_df_AD_vs_CN.annotated.sig.male.last.visit <- meta_df_AD_vs_CN.annotated.male.last.visit %>% dplyr::filter(pVal.final.bacon < 0.05) 
+
+
+
+readr::write_csv(
+  meta_df_AD_vs_CN.annotated.male.last.visit  %>% as.data.frame(),
+  file = paste0(
+    dir.result.meta.analysis.ad,
+    "MALE_meta_analysis_glm_fixed_effect_ADNI_last_visit_and_AIBL_AD_vs_CN_single_cpg_annotated.csv"
+  )
+)
+
+readr::write_csv(
+  meta_df_AD_vs_CN.annotated.sig.male.last.visit  %>% as.data.frame(),
+  file = paste0(
+    dir.result.meta.analysis.ad,
+    "MALE_meta_analysis_glm_fixed_effect_ADNI_last_visit_and_AIBL_AD_vs_CN_single_cpg_annotated_pvalue_cut_off_0_05.csv"
+  )
+)
+
+meta_df_AD_vs_CN.annotated.female.last.visit <- meta_df_AD_vs_CN_fixed_effect.female.last.visit %>% add_annotation()
+meta_df_AD_vs_CN.annotated.female.last.visit <- dplyr::left_join(meta_df_AD_vs_CN.annotated.female.last.visit, brain.sex.meta.analysis.female)
+
+meta_df_AD_vs_CN.annotated.sig.female.last.visit <- meta_df_AD_vs_CN.annotated.female.last.visit %>% dplyr::filter(pVal.final.bacon < 0.05) 
+
+readr::write_csv(
+  meta_df_AD_vs_CN.annotated.female.last.visit  %>% as.data.frame(),
+  file = paste0(
+    dir.result.meta.analysis.ad,
+    "FEMALE_meta_analysis_glm_fixed_effect_ADNI_last_visit_and_AIBL_AD_vs_CN_single_cpg_annotated.csv"
+  )
+)
+
+readr::write_csv(
+  meta_df_AD_vs_CN.annotated.sig.female.last.visit  %>% as.data.frame(),
+  file = paste0(
+    dir.result.meta.analysis.ad,
+    "FEMALE_meta_analysis_glm_fixed_effect_ADNI_last_visit_and_AIBL_AD_vs_CN_single_cpg_annotated_pvalue_cut_off_0_05.csv"
+  )
+)
+```
+
+
+# Results 
+
+## Male
+
+### No adjust smoking scores
+
+```{R}
+meta_df_AD_vs_CN.annotated.sig <- readr::read_csv(
+  file = paste0(
+    dir.result.meta.analysis.ad,
+    "MALE_meta_analysis_glm_fixed_effect_ADNI_and_AIBL_AD_vs_CN_single_cpg_annotated_pvalue_cut_off_0_05.csv"
+  ),
+  col_types = readr::cols()
+)
+dim(meta_df_AD_vs_CN.annotated.sig) # 40647    71
+table(meta_df_AD_vs_CN.annotated.sig$pVal.final.bacon < 1E-5) 
+table(meta_df_AD_vs_CN.annotated.sig$fdr.bacon < 0.05)
+ggpubr::gghistogram(meta_df_AD_vs_CN.annotated.sig$fdr.bacon)
+```
+
+#### pVal.final.bacon < 1E-5
+```{R}
+meta_df_AD_vs_CN.annotated.sig %>% dplyr::filter(pVal.final.bacon < 1E-5)  %>% gt::gt()
+```
+
+### Adjust smoking scores
+
+```{R}
+meta_df_AD_vs_CN.annotated.sig.SSc <- readr::read_csv(
+  file = paste0(
+    dir.result.meta.analysis.ad,
+    "MALE_meta_analysis_glm_fixed_effect_ADNI_and_AIBL_AD_vs_CN_adjust_smoking_single_cpg_annotated_pvalue_cut_off_0_05.csv"
+  ),
+  col_types = readr::cols()
+)
+dim(meta_df_AD_vs_CN.annotated.sig.SSc) # 40359    71
+table(meta_df_AD_vs_CN.annotated.sig.SSc$pVal.final.bacon < 1E-5) 
+table(meta_df_AD_vs_CN.annotated.sig.SSc$fdr.bacon < 0.05)
+ggpubr::gghistogram(meta_df_AD_vs_CN.annotated.sig.SSc$fdr.bacon)
+```
+
+#### pVal.final.bacon < 1E-5
+```{R}
+meta_df_AD_vs_CN.annotated.sig.SSc %>% dplyr::filter(pVal.final.bacon < 1E-5)  %>% gt::gt()
+```
+
+### Last visit
+
+```{R}
+meta_df_AD_vs_CN.annotated.sig.last.visit <- readr::read_csv(
+  file = paste0(
+    dir.result.meta.analysis.ad,
+    "MALE_meta_analysis_glm_fixed_effect_ADNI_last_visit_and_AIBL_AD_vs_CN_single_cpg_annotated_pvalue_cut_off_0_05.csv"
+  ),
+  col_types = readr::cols()
+)
+dim(meta_df_AD_vs_CN.annotated.sig.last.visit) # 40737    71
+table(meta_df_AD_vs_CN.annotated.sig.last.visit$pVal.final.bacon < 1E-5) 
+table(meta_df_AD_vs_CN.annotated.sig.last.visit$fdr.bacon < 0.05)
+ggpubr::gghistogram(meta_df_AD_vs_CN.annotated.sig.last.visit$fdr.bacon)
+```
+
+#### pVal.final.bacon < 1E-5
+```{R}
+meta_df_AD_vs_CN.annotated.sig.last.visit %>% dplyr::filter(pVal.final.bacon < 1E-5)  %>% gt::gt()
+```
+
+
+## Female
+
+### No adjust smoking scores
+
+
+```{R}
+meta_df_AD_vs_CN.annotated.sig <- readr::read_csv(
+  file = paste0(
+    dir.result.meta.analysis.ad,
+    "FEMALE_meta_analysis_glm_fixed_effect_ADNI_and_AIBL_AD_vs_CN_single_cpg_annotated_pvalue_cut_off_0_05.csv"
+  ),
+  col_types = readr::cols()
+)
+dim(meta_df_AD_vs_CN.annotated.sig) # 36350    71
+table(meta_df_AD_vs_CN.annotated.sig$pVal.final.bacon < 1E-5) 
+table(meta_df_AD_vs_CN.annotated.sig$fdr.bacon < 0.05)
+ggpubr::gghistogram(meta_df_AD_vs_CN.annotated.sig$fdr.bacon)
+```
+
+#### pVal.final.bacon < 1E-5
+```{R}
+meta_df_AD_vs_CN.annotated.sig %>% dplyr::filter(pVal.final.bacon < 1E-5)  %>% gt::gt()
+```
+
+
+### Adjust smoking scores
+
+```{R}
+meta_df_AD_vs_CN.annotated.sig.SSc <- readr::read_csv(
+  file = paste0(
+    dir.result.meta.analysis.ad,
+    "FEMALE_meta_analysis_glm_fixed_effect_ADNI_and_AIBL_AD_vs_CN_adjust_smoking_single_cpg_annotated_pvalue_cut_off_0_05.csv"
+  ),
+  col_types = readr::cols()
+)
+dim(meta_df_AD_vs_CN.annotated.sig.SSc) # 36708    71
+table(meta_df_AD_vs_CN.annotated.sig.SSc$pVal.final.bacon < 1E-5) 
+table(meta_df_AD_vs_CN.annotated.sig.SSc$fdr.bacon < 0.05)
+ggpubr::gghistogram(meta_df_AD_vs_CN.annotated.sig.SSc$fdr.bacon)
+```
+
+#### pVal.final.bacon < 1E-5
+```{R}
+meta_df_AD_vs_CN.annotated.sig.SSc %>% dplyr::filter(pVal.final.bacon < 1E-5)  %>% gt::gt()
+```
+
+### Last visit
+
+```{R}
+meta_df_AD_vs_CN.annotated.sig.last.visit <- readr::read_csv(
+  file = paste0(
+    dir.result.meta.analysis.ad,
+    "FEMALE_meta_analysis_glm_fixed_effect_ADNI_last_visit_and_AIBL_AD_vs_CN_single_cpg_annotated_pvalue_cut_off_0_05.csv"
+  ),
+  col_types = readr::cols()
+)
+dim(meta_df_AD_vs_CN.annotated.sig.last.visit) # 37715    71
+table(meta_df_AD_vs_CN.annotated.sig.last.visit$pVal.final.bacon < 1E-5) 
+table(meta_df_AD_vs_CN.annotated.sig.last.visit$fdr.bacon < 0.05)
+ggpubr::gghistogram(meta_df_AD_vs_CN.annotated.sig.last.visit$fdr.bacon)
+```
+
+
+#### pVal.final.bacon < 1E-5
+```{R}
+meta_df_AD_vs_CN.annotated.sig.last.visit %>% dplyr::filter(pVal.final.bacon < 1E-5)  %>% gt::gt()
+```
+
+```{R, include = FALSE, eval = F}
+# data for comb-p
+meta_df_AD_vs_CN.annotated.male <- readr::read_csv(
+  file = paste0(
+    dir.result.meta.analysis.ad,
+    "MALE_meta_analysis_glm_fixed_effect_ADNI_and_AIBL_AD_vs_CN_single_cpg_annotated.csv"
+  )
+) %>% as.data.frame()
+
+out <- IlluminaHumanMethylationEPICanno.ilm10b4.hg19::Locations[meta_df_AD_vs_CN.annotated.male$cpg,] %>% 
+  as.data.frame %>% dplyr::mutate(start= pos, end = pos) %>% dplyr::select(chr,start,end)
+out$pValue <- meta_df_AD_vs_CN.annotated.male$pVal.final.bacon
+readr::write_csv(out,file = paste0(dir.results,"/meta_analysis/files_for_combp/Male_meta_analysis_with_Smoke_prbs_pval_final_bacon.csv"))
+
+
+meta_df_AD_vs_CN.annotated.female <- readr::read_csv(
+  file = paste0(
+    dir.result.meta.analysis.ad,
+    "FEMALE_meta_analysis_glm_fixed_effect_ADNI_and_AIBL_AD_vs_CN_single_cpg_annotated.csv"
+  )
+) %>% as.data.frame()
+
+out <- IlluminaHumanMethylationEPICanno.ilm10b4.hg19::Locations[meta_df_AD_vs_CN.annotated.female$cpg,] %>% 
+  as.data.frame %>% dplyr::mutate(start= pos, end = pos) %>% dplyr::select(chr,start,end)
+out$pValue <- meta_df_AD_vs_CN.annotated.female$pVal.final.bacon
+readr::write_csv(out,file = paste0(dir.results,"/meta_analysis/files_for_combp/Female_meta_analysis_with_Smoke_prbs_pval_final_bacon.csv"))
+```
+
+
+# Plot correlations
+
+
+## No adjust for smoking scores vs adjust smoking scores
+
+### Male
+
+```{r}
+Male_meta_df_AD_vs_CN.annotated <- readr::read_csv(
+  file = paste0(
+    dir.result.meta.analysis.ad,
+    "MALE_meta_analysis_glm_fixed_effect_ADNI_and_AIBL_AD_vs_CN_single_cpg_annotated.csv"
+  ),
+  col_types = readr::cols()
+)
+Male_meta_df_AD_vs_CN.annotated <- Male_meta_df_AD_vs_CN.annotated %>% dplyr::select(
+  cpg, estimate.bacon, pVal.final.bacon
+)
+
+Male_meta_df_AD_vs_CN.annotated.SSc <- readr::read_csv(
+  file = paste0(
+    dir.result.meta.analysis.ad,
+    "MALE_meta_analysis_glm_fixed_effect_ADNI_and_AIBL_AD_vs_CN_adjust_smoking_single_cpg_annotated.csv"
+  ),
+  col_types = readr::cols()
+)
+Male_meta_df_AD_vs_CN.annotated.SSc <- Male_meta_df_AD_vs_CN.annotated.SSc %>% dplyr::select(
+  cpg, estimate.bacon, pVal.final.bacon
+)
+colnames(Male_meta_df_AD_vs_CN.annotated.SSc)[-1] <- paste0("adjustSSc_", colnames(Male_meta_df_AD_vs_CN.annotated.SSc)[-1])
+Male_meta_df_AD_vs_CN.annotated.all <- left_join(
+  Male_meta_df_AD_vs_CN.annotated,
+  Male_meta_df_AD_vs_CN.annotated.SSc
+)
+Male_meta_df_AD_vs_CN.annotated.all.cut.off <- Male_meta_df_AD_vs_CN.annotated.all %>%
+  filter(
+    pVal.final.bacon < 1E-05 | adjustSSc_pVal.final.bacon < 1E-05
+  )
+```
+
+#### Estimates
+
+```{r}
+#### all cpgs
+cor.test(
+  Male_meta_df_AD_vs_CN.annotated.all$estimate.bacon, 
+  Male_meta_df_AD_vs_CN.annotated.all$adjustSSc_estimate.bacon, 
+  method = "spearman"
+)
+```
+
+```{r}
+#### pval < 1E05
+cor.test(
+  Male_meta_df_AD_vs_CN.annotated.all.cut.off$estimate.bacon, 
+  Male_meta_df_AD_vs_CN.annotated.all.cut.off$adjustSSc_estimate.bacon, 
+  method = "spearman"
+)
+```
+
+
+```{r echo = F}
+library(ggpubr)
+library(ggrepel)
+ggscatter(Male_meta_df_AD_vs_CN.annotated.all, 
+          x = "estimate.bacon", y = "adjustSSc_estimate.bacon",
+          size = 0.5) + 
+  stat_cor(method = "spearman", label.x = -0.5, label.y = 0.5) + 
+  xlab("No adjust smoking scores") + 
+  ylab("Adjust smoking scores") + 
+  ggtitle("Male all CpGs estimates scatter plot")
+```
+
+```{r echo = F}
+ggscatter(Male_meta_df_AD_vs_CN.annotated.all.cut.off, 
+          x = "estimate.bacon", y = "adjustSSc_estimate.bacon",
+          add.params = list(color = "blue", fill = "lightgray"), size = 1) +
+  stat_cor(method = "spearman", label.x = -0.5, label.y = 0.5) + 
+  xlab("No adjust smoking scores") + 
+  ylab("Adjust smoking scores") + 
+  ggtitle("Male significant CpGs estimates scatter plot") +
+  geom_text_repel(aes(label = cpg), size = 3)
+```
+
+#### pValues
+
+```{r}
+#### all cpgs
+cor.test(
+  Male_meta_df_AD_vs_CN.annotated.all$pVal.final.bacon, 
+  Male_meta_df_AD_vs_CN.annotated.all$adjustSSc_pVal.final.bacon, 
+  method = "spearman"
+)
+```
+
+```{r}
+#### pval < 1E05
+cor.test(
+  Male_meta_df_AD_vs_CN.annotated.all.cut.off$pVal.final.bacon, 
+  Male_meta_df_AD_vs_CN.annotated.all.cut.off$adjustSSc_pVal.final.bacon, 
+  method = "spearman"
+)
+```
+
+```{r echo = F}
+ggplot(Male_meta_df_AD_vs_CN.annotated.all, 
+       aes(x = -log10(pVal.final.bacon), y = -log10(adjustSSc_pVal.final.bacon))) + 
+  geom_point(size = 0.5) + theme_classic() +
+  stat_cor(method = "spearman", label.x = 0, label.y = 4) + 
+  xlab("-log10(pValues) from no adjust smoking scores") + 
+  ylab("-log10(pValues) from adjust smoking scores") + 
+  ggtitle("Male all CpGs pValues scatter plot")
+```
+
+
+```{r echo = F}
+ggplot(Male_meta_df_AD_vs_CN.annotated.all.cut.off, 
+       aes(x = -log10(pVal.final.bacon), y = -log10(adjustSSc_pVal.final.bacon))) + 
+  geom_point(size = 1) + theme_classic() + 
+  geom_text_repel(aes(label = cpg), size = 3) +
+  stat_cor(method = "spearman", label.x = 0, label.y = 0) + 
+  xlab("-log10(pValues) from no adjust smoking scores") + 
+  ylab("-log10(pValues) from adjust smoking scores") + 
+  ggtitle("Male significant CpGs pValues scatter plot")
+```
+
+
+### Female
+
+```{r}
+Female_meta_df_AD_vs_CN.annotated <- readr::read_csv(
+  file = paste0(
+    dir.result.meta.analysis.ad,
+    "FEMALE_meta_analysis_glm_fixed_effect_ADNI_and_AIBL_AD_vs_CN_single_cpg_annotated.csv"
+  ),
+  col_types = readr::cols()
+)
+Female_meta_df_AD_vs_CN.annotated <- Female_meta_df_AD_vs_CN.annotated %>% dplyr::select(
+  cpg, estimate.bacon, pVal.final.bacon
+)
+
+Female_meta_df_AD_vs_CN.annotated.SSc <- readr::read_csv(
+  file = paste0(
+    dir.result.meta.analysis.ad,
+    "FEMALE_meta_analysis_glm_fixed_effect_ADNI_and_AIBL_AD_vs_CN_adjust_smoking_single_cpg_annotated.csv"
+  ),
+  col_types = readr::cols()
+)
+Female_meta_df_AD_vs_CN.annotated.SSc <- Female_meta_df_AD_vs_CN.annotated.SSc %>% dplyr::select(
+  cpg, estimate.bacon, pVal.final.bacon
+)
+colnames(Female_meta_df_AD_vs_CN.annotated.SSc)[-1] <- paste0("adjustSSc_", colnames(Female_meta_df_AD_vs_CN.annotated.SSc)[-1])
+Female_meta_df_AD_vs_CN.annotated.all <- left_join(
+  Female_meta_df_AD_vs_CN.annotated,
+  Female_meta_df_AD_vs_CN.annotated.SSc
+)
+Female_meta_df_AD_vs_CN.annotated.all.cut.off <- Female_meta_df_AD_vs_CN.annotated.all %>%
+  filter(
+    pVal.final.bacon < 1E-05 | adjustSSc_pVal.final.bacon < 1E-05
+  )
+```
+
+#### Estimates
+
+```{r}
+#### all cpgs
+cor.test(
+  Female_meta_df_AD_vs_CN.annotated.all$estimate.bacon, 
+  Female_meta_df_AD_vs_CN.annotated.all$adjustSSc_estimate.bacon, 
+  method = "spearman"
+)
+```
+
+
+```{r}
+#### pval < 1E05
+cor.test(
+  Female_meta_df_AD_vs_CN.annotated.all.cut.off$estimate.bacon, 
+  Female_meta_df_AD_vs_CN.annotated.all.cut.off$adjustSSc_estimate.bacon, 
+  method = "spearman"
+)
+```
+
+
+```{r echo = F}
+ggscatter(Female_meta_df_AD_vs_CN.annotated.all, 
+          x = "estimate.bacon", y = "adjustSSc_estimate.bacon",
+          size = 0.5) + 
+  stat_cor(method = "spearman", label.x = -1, label.y = 1) + 
+  xlab("No adjust smoking scores") + 
+  ylab("Adjust smoking scores") + 
+  ggtitle("Female all CpGs estimates scatter plot")
+```
+
+
+```{r echo = F}
+ggscatter(Female_meta_df_AD_vs_CN.annotated.all.cut.off, 
+          x = "estimate.bacon", y = "adjustSSc_estimate.bacon",
+          add.params = list(color = "blue", fill = "lightgray"), size = 1) +
+  stat_cor(method = "spearman", label.x = -0.5, label.y = 0.4) + 
+  xlab("No adjust smoking scores") + 
+  ylab("Adjust smoking scores") + 
+  ggtitle("Female significant CpGs estimates scatter plot") +
+  geom_text_repel(aes(label = cpg), size = 3)
+```
+
+#### pValues
+
+```{r}
+#### all cpgs
+cor.test(
+  Female_meta_df_AD_vs_CN.annotated.all$pVal.final.bacon, 
+  Female_meta_df_AD_vs_CN.annotated.all$adjustSSc_pVal.final.bacon, 
+  method = "spearman"
+)
+```
+
+```{r}
+#### pval < 1E05
+cor.test(
+  Female_meta_df_AD_vs_CN.annotated.all.cut.off$pVal.final.bacon, 
+  Female_meta_df_AD_vs_CN.annotated.all.cut.off$adjustSSc_pVal.final.bacon, 
+  method = "spearman"
+)
+```
+
+
+```{r echo = F}
+ggplot(Female_meta_df_AD_vs_CN.annotated.all, 
+       aes(x = -log10(pVal.final.bacon), y = -log10(adjustSSc_pVal.final.bacon))) + 
+  geom_point(size = 0.5) + theme_classic() +
+  stat_cor(method = "spearman", label.x = 0, label.y = 4) + 
+  xlab("-log10(pValues) from no adjust smoking scores") + 
+  ylab("-log10(pValues) from adjust smoking scores") + 
+  ggtitle("Female all CpGs pValues scatter plot")
+```
+
+```{r echo = F}
+ggplot(Female_meta_df_AD_vs_CN.annotated.all.cut.off, 
+       aes(x = -log10(pVal.final.bacon), y = -log10(adjustSSc_pVal.final.bacon))) + 
+  geom_point(size = 1) + theme_classic() + 
+  geom_text_repel(aes(label = cpg), size = 2) +
+  stat_cor(method = "spearman", label.x = 0, label.y = 0) + 
+  xlab("-log10(pValues) from no adjust smoking scores") + 
+  ylab("-log10(pValues) from adjust smoking scores") + 
+  ggtitle("Female significant CpGs pValues scatter plot")
+```
+
+
+## ADNI repeated measure vs ADNI last visit only
+
+### Male
+
+```{r}
+Male_meta_df_AD_vs_CN.annotated <- readr::read_csv(
+  file = paste0(
+    dir.result.meta.analysis.ad,
+    "MALE_meta_analysis_glm_fixed_effect_ADNI_and_AIBL_AD_vs_CN_single_cpg_annotated.csv"
+  ),
+  col_types = readr::cols()
+)
+Male_meta_df_AD_vs_CN.annotated <- Male_meta_df_AD_vs_CN.annotated %>% dplyr::select(
+  cpg, estimate.bacon, pVal.final.bacon
+)
+
+Male_meta_df_AD_vs_CN.annotated.last.visit <- readr::read_csv(
+  file = paste0(
+    dir.result.meta.analysis.ad,
+    "MALE_meta_analysis_glm_fixed_effect_ADNI_last_visit_and_AIBL_AD_vs_CN_single_cpg_annotated.csv"
+  ),
+  col_types = readr::cols()
+)
+Male_meta_df_AD_vs_CN.annotated.last.visit <- Male_meta_df_AD_vs_CN.annotated.last.visit %>% dplyr::select(
+  cpg, estimate.bacon, pVal.final.bacon
+)
+colnames(Male_meta_df_AD_vs_CN.annotated.last.visit)[-1] <- paste0("lastVisit_", colnames(Male_meta_df_AD_vs_CN.annotated.last.visit)[-1])
+Male_meta_df_AD_vs_CN.annotated.all <- left_join(
+  Male_meta_df_AD_vs_CN.annotated,
+  Male_meta_df_AD_vs_CN.annotated.last.visit
+)
+Male_meta_df_AD_vs_CN.annotated.all.cut.off <- Male_meta_df_AD_vs_CN.annotated.all %>%
+  filter(
+    pVal.final.bacon < 1E-05 | lastVisit_pVal.final.bacon < 1E-05
+  )
+```
+
+#### Estimates
+
+```{r}
+#### all cpgs
+cor.test(
+  Male_meta_df_AD_vs_CN.annotated.all$estimate.bacon, 
+  Male_meta_df_AD_vs_CN.annotated.all$lastVisit_estimate.bacon, 
+  method = "spearman"
+)
+```
+
+```{r}
+#### pval < 1E05
+cor.test(
+  Male_meta_df_AD_vs_CN.annotated.all.cut.off$estimate.bacon, 
+  Male_meta_df_AD_vs_CN.annotated.all.cut.off$lastVisit_estimate.bacon, 
+  method = "spearman"
+)
+```
+
+
+```{r echo = F}
+ggscatter(Male_meta_df_AD_vs_CN.annotated.all, 
+          x = "estimate.bacon", y = "lastVisit_estimate.bacon",
+          size = 0.5) + 
+  stat_cor(method = "spearman", label.x = -0.4, label.y = 1) + 
+  xlab("ADNI repeated measure") + 
+  ylab("ADNI last visit") + 
+  ggtitle("Male all CpGs estimates scatter plot")
+```
+
+```{r echo = F}
+ggscatter(Male_meta_df_AD_vs_CN.annotated.all.cut.off, 
+          x = "estimate.bacon", y = "lastVisit_estimate.bacon",
+          add.params = list(color = "blue", fill = "lightgray"), size = 1) +
+  stat_cor(method = "spearman", label.x = -0.5, label.y = 0.5) + 
+  xlab("ADNI repeated measure") + 
+  ylab("ADNI last visit") + 
+  ggtitle("Male significant CpGs estimates scatter plot") +
+  geom_text_repel(aes(label = cpg), size = 3)
+```
+
+#### pValues
+
+```{r}
+#### all cpgs
+cor.test(
+  Male_meta_df_AD_vs_CN.annotated.all$pVal.final.bacon, 
+  Male_meta_df_AD_vs_CN.annotated.all$lastVisit_pVal.final.bacon, 
+  method = "spearman"
+)
+```
+
+```{r}
+#### pval < 1E05
+cor.test(
+  Male_meta_df_AD_vs_CN.annotated.all.cut.off$pVal.final.bacon, 
+  Male_meta_df_AD_vs_CN.annotated.all.cut.off$lastVisit_pVal.final.bacon, 
+  method = "spearman"
+)
+```
+
+```{r echo = F}
+ggplot(Male_meta_df_AD_vs_CN.annotated.all, 
+       aes(x = -log10(pVal.final.bacon), y = -log10(lastVisit_pVal.final.bacon))) + 
+  geom_point(size = 0.5) + theme_classic() +
+  stat_cor(method = "spearman", label.x = 0, label.y = 5) + 
+  xlab("-log10(pValues) from ADNI repeated measure") + 
+  ylab("-log10(pValues) from ADNI last visit") + 
+  ggtitle("Male all CpGs pValues scatter plot")
+```
+
+
+```{r echo = F}
+ggplot(Male_meta_df_AD_vs_CN.annotated.all.cut.off, 
+       aes(x = -log10(pVal.final.bacon), y = -log10(lastVisit_pVal.final.bacon))) + 
+  geom_point(size = 1) + theme_classic() + 
+  geom_text_repel(aes(label = cpg), size = 3) +
+  stat_cor(method = "spearman", label.x = 0, label.y = 0) + 
+  xlab("-log10(pValues) from ADNI repeated measure") + 
+  ylab("-log10(pValues) from ADNI last visit") + 
+  ggtitle("Male significant CpGs pValues scatter plot")
+```
+
+
+### Female
+
+```{r}
+Female_meta_df_AD_vs_CN.annotated <- readr::read_csv(
+  file = paste0(
+    dir.result.meta.analysis.ad,
+    "FEMALE_meta_analysis_glm_fixed_effect_ADNI_and_AIBL_AD_vs_CN_single_cpg_annotated.csv"
+  ),
+  col_types = readr::cols()
+)
+Female_meta_df_AD_vs_CN.annotated <- Female_meta_df_AD_vs_CN.annotated %>% dplyr::select(
+  cpg, estimate.bacon, pVal.final.bacon
+)
+
+Female_meta_df_AD_vs_CN.annotated.last.visit <- readr::read_csv(
+  file = paste0(
+    dir.result.meta.analysis.ad,
+    "FEMALE_meta_analysis_glm_fixed_effect_ADNI_last_visit_and_AIBL_AD_vs_CN_single_cpg_annotated.csv"
+  ),
+  col_types = readr::cols()
+)
+Female_meta_df_AD_vs_CN.annotated.last.visit <- Female_meta_df_AD_vs_CN.annotated.last.visit %>% dplyr::select(
+  cpg, estimate.bacon, pVal.final.bacon
+)
+colnames(Female_meta_df_AD_vs_CN.annotated.last.visit)[-1] <- paste0("lastVisit_", colnames(Female_meta_df_AD_vs_CN.annotated.last.visit)[-1])
+Female_meta_df_AD_vs_CN.annotated.all <- left_join(
+  Female_meta_df_AD_vs_CN.annotated,
+  Female_meta_df_AD_vs_CN.annotated.last.visit
+)
+Female_meta_df_AD_vs_CN.annotated.all.cut.off <- Female_meta_df_AD_vs_CN.annotated.all %>%
+  filter(
+    pVal.final.bacon < 1E-05 | lastVisit_pVal.final.bacon < 1E-05
+  )
+```
+
+#### Estimates
+
+```{r}
+#### all cpgs
+cor.test(
+  Female_meta_df_AD_vs_CN.annotated.all$estimate.bacon, 
+  Female_meta_df_AD_vs_CN.annotated.all$lastVisit_estimate.bacon, 
+  method = "spearman"
+)
+```
+
+
+```{r}
+#### pval < 1E05
+cor.test(
+  Female_meta_df_AD_vs_CN.annotated.all.cut.off$estimate.bacon, 
+  Female_meta_df_AD_vs_CN.annotated.all.cut.off$lastVisit_estimate.bacon, 
+  method = "spearman"
+)
+```
+
+
+```{r echo = F}
+ggscatter(Female_meta_df_AD_vs_CN.annotated.all, 
+          x = "estimate.bacon", y = "lastVisit_estimate.bacon",
+          size = 0.5) + 
+  stat_cor(method = "spearman", label.x = -1, label.y = 1) + 
+  xlab("ADNI repeated measure") + 
+  ylab("ADNI last visit") + 
+  ggtitle("Female all CpGs estimates scatter plot")
+```
+
+
+```{r echo = F}
+ggscatter(Female_meta_df_AD_vs_CN.annotated.all.cut.off, 
+          x = "estimate.bacon", y = "lastVisit_estimate.bacon",
+          add.params = list(color = "blue", fill = "lightgray"), size = 1) +
+  stat_cor(method = "spearman", label.x = -0.5, label.y = 0.4) + 
+  xlab("ADNI repeated measure") + 
+  ylab("ADNI last visit") + 
+  ggtitle("Female significant CpGs estimates scatter plot") +
+  geom_text_repel(aes(label = cpg), size = 3)
+```
+
+#### pValues
+
+```{r}
+#### all cpgs
+cor.test(
+  Female_meta_df_AD_vs_CN.annotated.all$pVal.final.bacon, 
+  Female_meta_df_AD_vs_CN.annotated.all$lastVisit_pVal.final.bacon, 
+  method = "spearman"
+)
+```
+
+```{r}
+#### pval < 1E05
+cor.test(
+  Female_meta_df_AD_vs_CN.annotated.all.cut.off$pVal.final.bacon, 
+  Female_meta_df_AD_vs_CN.annotated.all.cut.off$lastVisit_pVal.final.bacon, 
+  method = "spearman"
+)
+```
+
+
+```{r echo = F}
+ggplot(Female_meta_df_AD_vs_CN.annotated.all, 
+       aes(x = -log10(pVal.final.bacon), y = -log10(lastVisit_pVal.final.bacon))) + 
+  geom_point(size = 0.5) + theme_classic() +
+  stat_cor(method = "spearman", label.x = 0, label.y = 5) + 
+  xlab("-log10(pValues) from ADNI repeated measure") + 
+  ylab("-log10(pValues) from ADNI last visit") + 
+  ggtitle("Female all CpGs pValues scatter plot")
+```
+
+```{r echo = F}
+ggplot(Female_meta_df_AD_vs_CN.annotated.all.cut.off, 
+       aes(x = -log10(pVal.final.bacon), y = -log10(lastVisit_pVal.final.bacon))) + 
+  geom_point(size = 1) + theme_classic() + 
+  geom_text_repel(aes(label = cpg)) +
+  stat_cor(method = "spearman", label.x = 0, label.y = 0) + 
+  xlab("-log10(pValues) from ADNI repeated measure") + 
+  ylab("-log10(pValues) from ADNI last visit") + 
+  ggtitle("Female significant CpGs pValues scatter plot")
+```
+
+# Session information
+```{R}
+devtools::session_info()
+```
+

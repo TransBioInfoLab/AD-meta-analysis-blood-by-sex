@@ -1,0 +1,414 @@
+---
+title: "Integrative meta-analysis of epigenome-wide association studies identifies genomic and epigenomics differences in the brain and the blood in Alzheimer’s disease"
+subtitle: "Meta-analysis dataset - Interaction model - using bacon inflation- and bias-corrected P-values"
+author:
+  - Tiago Chedraoui Silva^[University of Miami]
+  - Wei Zhang^[University of Miami]
+  - Lily Wang^[University of Miami]
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output:
+  rmarkdown::html_document:
+    highlight: breezedark
+    theme: lumen
+    toc: true
+    number_sections: true
+    df_print: paged
+    code_download: false
+    toc_float:
+      collapsed: yes
+    toc_depth: 3
+editor_options:
+  chunk_output_type: inline     
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "../..")
+```
+
+# Main libraries and configuration
+
+```{R, message = FALSE, results = 'hide'}
+library(dplyr)
+library(ExperimentHub)
+library(GenomicRanges)
+library(tidyr)
+```
+
+# Meta-analysis of Genomic Regions: Single-cpg
+
+## Paths
+```{R}
+dir.base <- "~/TBL Dropbox/Wei Zhang/AD-meta-analysis-blood-samples-bySex"
+dir.base.data <- file.path(dir.base,"../AD-meta-analysis-blood-samples/")
+dir.data.aux <- file.path(dir.base.data,"datasets/Aux/") 
+dir.results <- file.path(dir.base,"analysis_results")
+dir.result.meta.analysis <- file.path(dir.results, "meta_analysis/Logistic_regression_model/withSmokePrbs")
+dir.result.meta.analysis.ad <- file.path(dir.result.meta.analysis, "AD_vs_CN/")
+#for(p in grep("dir",ls(),value = T)) dir.create(get(p),recursive = TRUE,showWarnings = FALSE)
+```
+
+## Import datasets and pre-process for each cohort 
+
+```{R}
+adni.results.files <- list.files(
+  path = file.path(dir.results, "ADNI/withSmoke/AD_CN/"),
+  pattern = "interaction_with_inflation.csv",
+  recursive = TRUE,
+  full.names = TRUE,
+  ignore.case = TRUE
+)
+basename(adni.results.files)
+aibl.results.files <- list.files(
+  path = file.path(dir.results, "AIBL/single_cpg/withSmoke/"),
+  pattern = "interaction_gender_and_methy.*with_inflation.csv",
+  recursive = TRUE,
+  full.names = TRUE,
+  ignore.case = TRUE
+)
+basename(aibl.results.files)
+results.files <- c(aibl.results.files,adni.results.files)
+basename(results.files)
+```
+
+## Create a merged final dataset 
+
+```{r}
+list.of.results <- plyr::alply(results.files,.margins = 1,.fun = function(f){
+  data <- readr::read_csv(f, col_types = readr::cols())
+  dataset <- paste0(
+    stringr::str_extract(basename(f),"AIBL|ADNI|AD_vs_CN"),
+    "_",
+    stringr::str_extract(toupper(basename(f)),"INTERACTION")
+  )
+  data <- data %>% dplyr::select(contains(c("cpg","bacon","Std..Error","fdr","tValue","z.value","Pr...z..","t.value","Error","Estimate","Pr...t..")))
+  
+  data <- data %>% rename_with(
+    .fn = function(x) {
+      paste0(dataset,"_",x)
+    },
+    contains(c("bacon","fdr","tValue","z.value","Pr...z..","t.value","Error","Estimate","Pr...t.."))
+  )
+  data  
+})
+names(list.of.results) <- paste0(
+  stringr::str_extract(basename(results.files),"AIBL|ADNI|AD_vs_CN"),
+  "_",
+  stringr::str_extract(toupper(basename(results.files)),"INTERACTION")
+)
+
+multi_cohorts_AD_vs_CN.Interaction <- Reduce(
+  function(x,y, ...) inner_join(
+    x,
+    y,
+    ..., 
+    by = "cpg"
+  ),
+  list.of.results[grep("_INTERACTION",names(list.of.results))]
+) %>% unique()
+
+lapply(list.of.results,dim)
+dim(multi_cohorts_AD_vs_CN.Interaction)
+```
+
+
+## Meta analysis 
+```{R, eval = FALSE}
+library(meta)
+
+doParallel::registerDoParallel(cores = 10)
+calculate_meta_analysis <- function(multi_cohorts){
+  plyr::adply(
+    .data = multi_cohorts, 
+    .margins = 1, 
+    .fun =  function(row){
+      
+      est <- row[grep("Estimate.bacon",colnames(row))] %>% as.numeric
+      
+      direction <-  paste(
+        ifelse(
+          is.na(est), ".",
+          ifelse(est > 0, "+", "-")
+        ), collapse = "")
+      
+      se <- row[grep("StdErr.bacon",colnames(row))] %>% as.numeric
+      cohort <- gsub("_StdErr.bacon","",grep("StdErr.bacon",colnames(row),value = T))
+      df <- data.frame(
+        cohort = cohort,
+        est = est,
+        se = se,
+        stringsAsFactors = FALSE
+      )
+      
+      f <- metagen(
+        TE = est,
+        seTE = se,
+        data = df,
+        sm = "OR"
+      )
+      
+      tibble::tibble(
+        cpg = row$cpg,
+        estimate.bacon = f$TE.fixed,
+        se.bacon = f$seTE.fixed,
+        pVal.fixed.bacon = f$pval.fixed,
+        pVal.random.bacon = f$pval.random,
+        pValQ.bacon = f$pval.Q,
+        direction.bacon = direction
+      )
+    }  , .progress = "time",
+    .parallel = T,
+    .id = NULL
+  )
+}
+calculate_meta_analysis_pvalue <- function(meta_df, pvalue.type = "fixed"){
+  ### create final pVal
+  if (pvalue.type == "fixed"){
+    meta_df$pVal.final.bacon <- meta_df$pVal.fixed.bacon
+  } else if (pvalue.type == "random"){
+    meta_df$pVal.final.bacon <- meta_df$pVal.random.bacon
+  } else {
+    print("both")
+    meta_df$pVal.final.bacon <- ifelse(
+      meta_df$pValQ.bacon > 0.05, meta_df$pVal.fixed.bacon, meta_df$pVal.random.bacon
+    )
+  }
+  ### calculate FDR
+  meta_df$fdr.bacon <- p.adjust(meta_df$pVal.final.bacon, method = "fdr")
+  ### order meta_df
+  meta_final_df <- meta_df[, c(grep("_",colnames(meta_df),invert = T),
+                               grep("_",colnames(meta_df),invert = F))
+  ]
+  meta_final_ordered_df <- meta_final_df[order(meta_final_df$pVal.final.bacon),]
+  return(meta_final_ordered_df)
+}
+```
+
+
+```{r eval = F}
+meta_df_AD_vs_CN_fixed_effect.interaction <- multi_cohorts_AD_vs_CN.Interaction %>% 
+  calculate_meta_analysis() %>% 
+  calculate_meta_analysis_pvalue(pvalue.type = "fixed")
+
+readr::write_csv(
+  meta_df_AD_vs_CN_fixed_effect.interaction  %>% as.data.frame(),
+  file = paste0(dir.result.meta.analysis.ad, "meta_analysis_glm_fixed_effect_ADNI_and_AIBL_AD_vs_CN_interaction_single_cpg.csv")
+)
+```
+
+
+
+## Add annotation to input cpgs
+
+
+```{R eval = F}
+library(GenomicRanges)
+library(dplyr)
+data <- readr::read_tsv(
+  file.path(dir.base.data,"datasets/nasser_2021/AllPredictions.AvgHiC.ABC0.015.minus150.ForABCPaperV3.txt.gz")
+)
+CellType.selected <- readxl::read_xlsx(
+   file.path(dir.base.data,"code/annotations/Nassser study selected biosamples.xlsx"),col_names = FALSE
+   ) %>% dplyr::pull(1)
+
+data.filtered <- data %>% dplyr::filter(CellType %in% CellType.selected) %>% 
+  dplyr::filter(!isSelfPromoter)  %>% 
+  dplyr::filter(class != "promoter")
+
+nasser.enhancer.gr <- data.filtered %>% makeGRangesFromDataFrame(
+  start.field = "start",
+  end.field = "end",
+  seqnames.field = "chr",
+  keep.extra.columns = TRUE
+)
+
+cpg.gr <- IlluminaHumanMethylationEPICanno.ilm10b4.hg19::Locations %>%
+  GenomicRanges::makeGRangesFromDataFrame(start.field = "pos",end.field = "pos")
+cpg.gr <- cpg.gr + 250
+cpg.gr$cpg <- rownames(IlluminaHumanMethylationEPICanno.ilm10b4.hg19::Locations)
+hits <- findOverlaps(cpg.gr,nasser.enhancer.gr) %>% as.data.frame()
+
+cpgs.ad.is.enahncer.nasser <- data.frame(
+  "Cpg" = cpg.gr[hits$queryHits,]$cpg,
+  "Cell_type" = nasser.enhancer.gr$CellType[hits$subjectHits]
+) %>% unique %>% dplyr::group_by(Cpg) %>% summarise("Cell_type" = paste(Cell_type,collapse = ";"))
+```
+
+```{R, eval = FALSE}
+load(file.path(dir.data.aux,"meta_analysis_cpgs.rda"))
+great_HM450 <- get(load(file.path(dir.data.aux,"great_HM450_array_annotation.rda")))
+great_EPIC <- get(load(file.path(dir.data.aux,"great_EPIC_array_annotation.rda")))
+great <- unique(rbind(great_HM450,great_EPIC))
+load(file.path(dir.data.aux,"E073_15_coreMarks_segments.rda"))
+infinium.annot <- readxl::read_xlsx(file.path(dir.data.aux,"infinium-methylationepic-v-1-0-b5-manifest-file.xlsx"),skip = 7)
+
+
+add_annotation <- function(result){
+  result$cpg_in_EPIC <- result$cpg %in% rownames(IlluminaHumanMethylationEPICanno.ilm10b4.hg19::Locations)
+  result$cpg_in_hm450 <- result$cpg %in% rownames(IlluminaHumanMethylation450kanno.ilmn12.hg19::Locations)
+  
+  message("Creating aux objects")
+  Locations <- unique(rbind(
+    DataFrame(IlluminaHumanMethylationEPICanno.ilm10b4.hg19::Locations),
+    DataFrame(IlluminaHumanMethylation450kanno.ilmn12.hg19::Locations)
+  ))
+  
+  Islands.UCSC <- unique(rbind(
+    DataFrame(IlluminaHumanMethylationEPICanno.ilm10b4.hg19::Islands.UCSC),
+    DataFrame(IlluminaHumanMethylation450kanno.ilmn12.hg19::Islands.UCSC)
+  ))
+  
+  other.epic <- IlluminaHumanMethylationEPICanno.ilm10b4.hg19::Other[,c("UCSC_RefGene_Name","UCSC_RefGene_Group")]
+  other.epic$cpg <- rownames(other.epic)
+  other.hm450 <- IlluminaHumanMethylation450kanno.ilmn12.hg19::Other[,c("UCSC_RefGene_Name","UCSC_RefGene_Group")]
+  other.hm450$cpg <- rownames(other.hm450)
+  
+  Other <- unique(rbind(
+    other.epic,
+    other.hm450
+  ))
+  
+  
+  message("Annotating sig in brain")
+  result$sig.in.brain <- result$cpg %in% brain.meta.analysis.cpgs
+  
+  message("Annotating great")
+  result$GREAT_annotation <- great$GREAT_annotation[match(result$cpg,great$cpg)]
+  
+  message("Annotating location")
+  result$pos <- Locations[result$cpg,]$pos
+  result$chr <- Locations[result$cpg,]$chr
+  
+  message("Annotating island")
+  result$Islands.UCSC.Relation_to_Island <- Islands.UCSC$Relation_to_Island[match(result$cpg,rownames(Islands.UCSC))] 
+  result$UCSC_RefGene_Name <- Other$UCSC_RefGene_Name[match(result$cpg,rownames(Other))] 
+  result$UCSC_RefGene_Group <- Other$UCSC_RefGene_Group[match(result$cpg,rownames(Other))]
+  
+  result$GencodeCompV12_NAME <- infinium.annot$GencodeCompV12_NAME[match(result$cpg,infinium.annot$IlmnID)]
+  result$GencodeCompV12_Accession <- infinium.annot$GencodeCompV12_Accession[match(result$cpg,infinium.annot$IlmnID)]
+  result$GencodeCompV12_Group <- infinium.annot$GencodeCompV12_Group[match(result$cpg,infinium.annot$IlmnID)]
+  
+  message("Annotating E073_15_coreMarks_segments")
+  result.gr <- result %>% makeGRangesFromDataFrame(start.field = "pos",end.field = "pos",seqnames.field = "chr")
+  hits <- findOverlaps(result.gr,ChmmModels.gr) %>% as.data.frame()
+  hits$state <- ChmmModels.gr$state[hits$subjectHits]
+  hits$cpg <- result$cpg[hits$queryHits]
+  result$E073_15_coreMarks_segments_state <- hits$state[match(result$cpg,hits$cpg)]
+  
+  message("Annotating enhancer")
+  result$nasser_is_enahncer <- result$cpg %in% cpgs.ad.is.enahncer.nasser$Cpg
+  result$nasser_enhancer_cell_type <- cpgs.ad.is.enahncer.nasser$Cell_type[match(result$cpg, cpgs.ad.is.enahncer.nasser$Cpg)]
+  
+  return(result)
+  
+}
+```
+
+
+```{r eval = F}
+meta_df_AD_vs_CN.annotated <- meta_df_AD_vs_CN_fixed_effect.interaction %>% add_annotation()
+meta_df_AD_vs_CN.annotated.sig.interaction <- meta_df_AD_vs_CN.annotated %>% dplyr::filter(pVal.final.bacon < 0.05) 
+
+readr::write_csv(
+  meta_df_AD_vs_CN.annotated  %>% as.data.frame(),
+  file = paste0(
+    dir.result.meta.analysis.ad,
+    "meta_analysis_glm_fixed_effect_ADN_and_AIBL_AD_vs_CNI_interaction_annotated.csv"
+  )
+)
+
+readr::write_csv(
+  meta_df_AD_vs_CN.annotated.sig.interaction  %>% as.data.frame(),
+  file = paste0(
+    dir.result.meta.analysis.ad,
+    "meta_analysis_glm_fixed_effect_ADNI_and_AIBL_AD_vs_CN_interaction_annotated_pvalue_cut_off_0_05.csv"
+  )
+)
+```
+
+# Combined with sex-stratified analysis
+
+```{r}
+meta_df_AD_vs_CN.annotated.male <- readr::read_csv(
+  file = paste0(
+    dir.result.meta.analysis.ad,
+    "MALE_meta_analysis_glm_fixed_effect_ADNI_and_AIBL_AD_vs_CN_single_cpg_annotated.csv"
+  )
+) %>% as.data.frame()
+meta_df_AD_vs_CN.annotated.female <- readr::read_csv(
+  file = paste0(
+    dir.result.meta.analysis.ad,
+    "FEMALE_meta_analysis_glm_fixed_effect_ADNI_and_AIBL_AD_vs_CN_single_cpg_annotated.csv"
+  )
+) %>% as.data.frame()
+meta_df_AD_vs_CN.annotated.interaction <- readr::read_csv(
+  file = paste0(
+    dir.result.meta.analysis.ad,
+    "meta_analysis_glm_fixed_effect_ADN_and_AIBL_AD_vs_CNI_interaction_annotated.csv"
+  )
+)
+
+```
+
+
+```{r}
+get_final_table <- function(data, model){
+  colnames(data)[c(2:9)] <- paste0(model, "_", colnames(data)[c(2:9)])
+  data[,c(1:9, 28:40)]
+}
+
+meta_df_AD_vs_CN.annotated.male <- meta_df_AD_vs_CN.annotated.male %>% get_final_table(model = "MALE")
+meta_df_AD_vs_CN.annotated.female <- meta_df_AD_vs_CN.annotated.female %>% get_final_table("FEMALE")
+meta_df_AD_vs_CN.annotated.interaction <- meta_df_AD_vs_CN.annotated.interaction %>% get_final_table("Interaction")
+
+meta.results.ad.glm.all <- meta_df_AD_vs_CN.annotated.interaction %>% left_join(meta_df_AD_vs_CN.annotated.male)
+meta.results.ad.glm.all <- meta.results.ad.glm.all %>% left_join(meta_df_AD_vs_CN.annotated.female)
+
+head(meta.results.ad.glm.all)
+```
+
+```{r eval = F}
+readr::write_csv(
+  meta.results.ad.glm.all,
+  file.path(dir.result.meta.analysis.ad, "meta_analysis_glm_fixed_effect_ADN_and_AIBL_AD_vs_CNI_interaction_combined_sex_stratified.csv")
+)
+```
+
+
+```{r eval = F}
+meta.results.ad.glm.female.with.interaction <- meta_df_AD_vs_CN.annotated.interaction %>% left_join(meta_df_AD_vs_CN.annotated.female)
+meta.results.ad.glm.female.with.interaction <- meta.results.ad.glm.female.with.interaction %>% filter(
+  Interaction_pVal.final.bacon < 1E-05
+)
+
+meta.results.ad.glm.male.with.interaction <- meta_df_AD_vs_CN.annotated.interaction %>% left_join(meta_df_AD_vs_CN.annotated.male)
+meta.results.ad.glm.male.with.interaction <- meta.results.ad.glm.male.with.interaction %>% filter(
+  Interaction_pVal.final.bacon < 1E-05
+)
+
+writexl::write_xlsx(
+  list(
+    "sig_interaction_in_female_meta" = meta.results.ad.glm.female.with.interaction,
+    "sig_interaction_in_male_meta" = meta.results.ad.glm.male.with.interaction
+  ),
+  path = file.path(dir.result.meta.analysis.ad, "sig_interaction_cpg_in_meta_analysis_female_male.xlsx")
+)
+```
+
+
+```{r eval = F}
+meta_df_AD_vs_CN.annotated.interaction$"Sig. in sex-combined blood samples analysis" <- 
+  meta_df_AD_vs_CN.annotated.interaction$cpg %in% Sig.in.blood.combined$cpg
+meta_df_AD_vs_CN.annotated.interaction$"Sig. in sex-specific brain samples analysis" <- 
+  meta_df_AD_vs_CN.annotated.interaction$cpg %in% c(Sig.in.brain.sex.combined.female$cpg, Sig.in.brain.sex.combined.male$cpg)
+meta_df_AD_vs_CN.annotated.interaction$"Sig. in  McCartney et al. (2020)" <-
+  meta_df_AD_vs_CN.annotated.interaction$cpg %in% c(Sig.in.McCartney.autosome$...1, Sig.in.McCartney.autosome$...1)
+meta_df_AD_vs_CN.annotated.interaction$"Sig. in  Yusipov et al. (2020)" <-
+  meta_df_AD_vs_CN.annotated.interaction$cpg %in% Sig.in.Yusipov$`CpG probe`
+```
+
+```{r}
+meta_df_AD_vs_CN.annotated.interaction %>% filter(pVal.final.bacon < 1e-05)
+```
+
+
