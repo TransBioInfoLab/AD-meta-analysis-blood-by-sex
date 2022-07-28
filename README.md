@@ -16,12 +16,8 @@ In this work, we performed a sex-specific meta-analysis of two large independent
 
 | File                 | Dataset | Link |
 |----------------------|-------------|-------------|
-| ADNI/ADNI_SAS.Rmd        |   ADNI  | [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex-by-sex/blob/main/code/ADNI/ADNI_SAS.Rmd) |
-| ADNI/ADNI_DMR_analysis_SAS_FEMALE.Rmd        |   ADNI  | [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/code/ADNI/ADNI_DMR_analysis_SAS_bySex_FEMALE.Rmd) |
-| ADNI/ADNI_DMR_analysis_SAS_MALE.Rmd        |   ADNI  | [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/code/ADNI/ADNI_DMR_analysis_SAS_bySex_MALE.Rmd) |
+| ADNI/ADNI_SAS_bySex.Rmd  |   ADNI  | [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex-by-sex/blob/main/code/ADNI/ADNI_SAS_bySex.Rmd) |
 | AIBL/AIBL_bySex.Rmd           |   AIBL    | [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/code/AIBL/AIBL_bySex.Rmd) |
-| AIBL/AIBL_DMR_bySex_male.Rmd           |   AIBL    | [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/code/AIBL/AIBL_DMR_bySex_male.Rmd) |
-| AIBL/AIBL_DMR_bySex_female.Rmd           |   AIBL    | [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/code/AIBL/AIBL_DMR_bySex_female.Rmd) |
 | Matched_data_ADNI/matched_RNA_DNAm_data_and_residuals_bySex.R          |   ADNI    | [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/code/Matched_data_ADNI/matched_RNA_DNAm_data_and_residuals_bySex.R) |
 | Clinical/clinical_info.Rmd          |   ADNI & AIBL & addneuromed   | [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/code/Clinical/clinical_info.Rmd) |
 | Clinical/clinical_info_brain.Rmd          |  GASPARONI & LONDON & MtSinai & ROSMAP  | [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/code/Clinical/clinical_info_brain.Rmd) |
@@ -32,9 +28,7 @@ In this work, we performed a sex-specific meta-analysis of two large independent
 | File                 | Link |
 |----------------------|-------------|
 | meta-analysis/meta-analysis-two-cohorts_glm_by_sex.Rmd      |  [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/code/meta-analysis/meta-analysis-two-cohorts_glm_by_sex.Rmd) |
-| meta-analysis-two-cohorts-interaction-glm-bySex.Rmd      |  [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/code/meta-analysis/meta-analysis-two-cohorts-interaction-glm-bySex.Rmd) |
-| meta-analysis/meta-analysis/meta-analysis-two-cohorts_glm_DMR_by_FEMALE.Rmd     |  [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/code/meta-analysis/meta-analysis-two-cohorts_glm_DMR_by_FEMALE.Rmd) |
-| meta-analysis/meta-analysis/meta-analysis-two-cohorts_glm_DMR_by_MALE.Rmd     |  [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/code/meta-analysis/meta-analysis-two-cohorts_glm_DMR_by_MALE.Rmd) |
+| meta-analysis-two-cohorts-interaction-glm.Rmd      |  [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/code/meta-analysis/meta-analysis-two-cohorts-interaction-glm.Rmd) |
 
 #### 2.1 Blood samples meta-analysis results 
 
@@ -43,18 +37,16 @@ In this work, we performed a sex-specific meta-analysis of two large independent
 |Female| MALE_meta_analysis_glm_fixed_effect_ADNI_and_AIBL_AD_vs_CN_single_cpg.csv     |  [Link](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/results/MALE_meta_analysis_glm_fixed_effect_ADNI_and_AIBL_AD_vs_CN_single_cpg.csv) |
 |Male| FEMALE_meta_analysis_glm_fixed_effect_ADNI_and_AIBL_AD_vs_CN_single_cpg.csv     |  [Link](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/results/FEMALE_meta_analysis_glm_fixed_effect_ADNI_and_AIBL_AD_vs_CN_single_cpg.csv) |
 |Interaction| meta_analysis_glm_fixed_effect_ADNI_and_AIBL_AD_vs_CN_interaction_single_cpg.csv     |  [Link](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/results/meta_analysis_glm_fixed_effect_ADNI_and_AIBL_AD_vs_CN_interaction_single_cpg.csv) |
- 
- 
+
+
 ### 3. Cross-tissue meta-analysis	
 
 | File                 | Link |
 |----------------------|-------------|
 | cross_tissue_meta_analysis/cross_tissue_meta_analysis_male.Rmd        |  [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/code/cross_tissue_meta_analysis/cross_tissue_meta_analysis_male.Rmd) |
-| cross_tissue_meta_analysis/cross_tissue_meta_analysis_DMR_male.Rmd        |  [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/code/cross_tissue_meta_analysis/cross_tissue_meta_analysis_DMR_male.Rmd) |
 | cross_tissue_meta_analysis/cross_tissue_meta_analysis_female.Rmd        |  [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/code/cross_tissue_meta_analysis/cross_tissue_meta_analysis_female.Rmd) |
-| cross_tissue_meta_analysis/cross_tissue_meta_analysis_DMR_female.Rmd        |  [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/code/cross_tissue_meta_analysis/cross_tissue_meta_analysis_DMR_female.Rmd) |
 
-#### 3.1 Cross-tissue meta-analysis	results
+#### 3.1 Cross-tissue meta-analysis results
 
 | Result | File               | Link |
 |---------|--------------------|-------------|
