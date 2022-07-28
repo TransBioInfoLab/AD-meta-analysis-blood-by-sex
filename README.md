@@ -17,7 +17,7 @@ In this work, we performed a sex-specific meta-analysis of two large independent
 | File                 | Dataset | Link |
 |----------------------|-------------|-------------|
 | ADNI/ADNI_SAS_bySex.Rmd  |   ADNI  | [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex-by-sex/blob/main/code/ADNI/ADNI_SAS_bySex.Rmd) |
-| AIBL/AIBL_bySex.Rmd           |   AIBL    | [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/code/AIBL/AIBL_bySex.Rmd) |
+| AIBL/AIBL_bySex.Rmd           |   AIBL    | [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/code/AIBL/AIBL_bySex.rmd) |
 | Matched_data_ADNI/matched_RNA_DNAm_data_and_residuals_bySex.R          |   ADNI    | [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/code/Matched_data_ADNI/matched_RNA_DNAm_data_and_residuals_bySex.R) |
 | Clinical/clinical_info.Rmd          |   ADNI & AIBL & addneuromed   | [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/code/Clinical/clinical_info.Rmd) |
 | Clinical/clinical_info_brain.Rmd          |  GASPARONI & LONDON & MtSinai & ROSMAP  | [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/code/Clinical/clinical_info_brain.Rmd) |
