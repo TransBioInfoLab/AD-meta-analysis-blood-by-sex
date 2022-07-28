@@ -1,8 +1,6 @@
 #-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-==-=-=-=-=-=-=-=-=-=-=-=-=-=
 # Article:
-# Integrative meta-analysis of epigenome-wide association studies
-# identifies genomic and
-# epigenomics differences in the brain and the blood in Alzheimer’s disease
+# Distinct sex-specific DNA methylation differences in Alzheimer’s disease
 #-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-==-=-=-=-=-=-=-=-=-=-=-=-=-=
 # Authors: 
 # - Tiago C. silva

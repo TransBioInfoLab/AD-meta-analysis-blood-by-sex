@@ -1,5 +1,5 @@
 ---
-title: "Integrative meta-analysis of epigenome-wide association studies identifies genomic and epigenomics differences in the brain and the blood in Alzheimer’s disease"
+title: "Distinct sex-specific DNA methylation differences in Alzheimer’s disease"
 subtitle: 'Validation of prioritized CpGs using external dataset'
 author:
   - Tiago Chedraoui Silva^[University of Miami]
@@ -588,7 +588,7 @@ get_auc <- function(model.formula = model.formula,data.training = NULL ,data.tes
 roc_plot <- function(
   cpgs = NULL,
   cpgs.label = NULL,
-  model.formula = "DIAGNOSIS ~ MRS + AGE + SEX + B + NK + CD4T + CD8T + Mono + Neutro",
+  model.formula = "DIAGNOSIS ~MRS + AGE + B + NK + CD4T + Mono + Gran",
   training.datasets = "AIBL",
   sex = "Male",
   use.EPIC = FALSE,
@@ -722,7 +722,7 @@ roc_plot <- function(
 calc_auc <- function(
   cpgs = NULL,
   cpgs.label = NULL,
-  model.formula = "DIAGNOSIS ~ MRS + AGE + SEX + B + NK + CD4T + CD8T + Mono + Neutro",
+  model.formula = "DIAGNOSIS ~ MRS + AGE + B + NK + CD4T + Mono + Gran",
   age = NULL, 
   mrs.source = "meta-analysis",
   impute.na.cpgs = FALSE,

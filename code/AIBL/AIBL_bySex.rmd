@@ -1,5 +1,5 @@
 ---
-title: "Integrative meta-analysis of epigenome-wide association studies identifies genomic and epigenomics differences in the brain and the blood in Alzheimer’s disease - Stratified by Sex"
+title: "Distinct sex-specific DNA methylation differences in Alzheimer’s disease"
 subtitle: 'AIBL dataset'
 author:
   - Tiago Chedraoui Silva^[University of Miami]
@@ -297,7 +297,7 @@ df.probes <- data.frame(
   "Description" = c(
     "total number of probes in raw data",
     "probes with detection P < 0.01 for all samples",
-    "only probes that start with cg, no crosshyb, no smoking, mafcut = 0.01"
+    "only probes that start with cg, no crosshyb, mafcut = 0.01"
   )
 )
 df.probes %>% gt::gt()
@@ -332,16 +332,6 @@ XY.probes <- eh[["EH3131"]]
 any(XY.probes %in% rownames(aibl.se.with.sex)) 
 ```
 
-## select a few smoking probes, and show they are removed
-```{R}
-any(
-  c("cg16145216", "cg19406367",
-    "cg05603985", "cg10768063",
-    "cg14099685", "cg12513616",
-    "cg04085571", "cg23648810"
-  ) %in% rownames(aibl.se.with.sex)
-)
-```
 
 ## show quantiles for each sample is the same
 ```{R}
@@ -398,36 +388,6 @@ sm.density.compare(
 ```
 
 
-## check the number of smoking probes that are included
-
-
-```{R}
-smoking.file <- "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5267325/bin/NIHMS817273-supplement-001506_-_Supplemental_Tables.xlsx"
-if(!file.exists(file.path(dir.data.aux,basename(smoking.file)))) {
-  downloader::download(smoking.file,file.path(dir.data.aux,basename(smoking.file)))
-}
-smoking <- readxl::read_xlsx(
-  file.path(dir.data.aux,basename(smoking.file)),
-  sheet = "02",
-  skip = 2
-)
-smoking.sig.probes <- smoking %>%
-  dplyr::filter(`P-value` < 1*10^(-7)) %>%
-  dplyr::pull("Probe ID")
-
-num.smoking.probes <- length(smoking.sig.probes)
-num.smoking.probes.included <- length(rownames(aibl.se.with.sex)[rownames(aibl.se.with.sex) %in% smoking.sig.probes])
-df.smoke <- data.frame(
-  'Description' = c(
-    "Total number of smoking probes",
-    "Number of smoking probes included"),
-  'Number of Sample' = c(
-    num.smoking.probes,
-    num.smoking.probes.included
-  )
-)    
-df.smoke 
-```
 
 ```{R checking_part5, include = FALSE}
 rm(aibl.se.with.sex)
@@ -440,8 +400,6 @@ aibl.se.with.sex <- get(load(
   file.path(dir.data.processed, "AIBL_se_age_at_least_65_with_XY.rda")
 ))
 result_SSc <- readr::read_csv(file.path(dir.data,"AIBL_Smoking_Scores.csv"))
-result_MSc <- readr::read_csv(file.path(dir.data,"AIBL_Mathylation_Scores.csv"))
-McCartney_SSc <- readr::read_csv(file.path(dir.data,"AIBL_Smoking_Scores_McC.csv"))
 
 aibl.se.with.sex <- aibl.se.with.sex[,aibl.se.with.sex$`disease status:ch1` %in% c("healthy control","Alzheimer's disease")]
 
@@ -462,8 +420,6 @@ pheno <- pheno %>% dplyr::select(
 )
 
 pheno$smokingScore <- result_SSc[match(pheno$barcodes, result_SSc$SampleName),]$smokingScore
-pheno$smokingScore2 <- result_MSc[match(pheno$barcodes, result_MSc$SampleName),]$methylationScore
-pheno$smokingScore3 <- McCartney_SSc[match(pheno$barcodes, McCartney_SSc$SampleName),]$McC_SSc
 ```
 
 ## Metadata structure
@@ -538,65 +494,6 @@ wilcox.stats.female
 
 ```{r plot_SSc, echo = F}
 ggplot(pheno, aes(x = DIAGNOSIS,y = smokingScore, fill = DIAGNOSIS)) + 
-  geom_boxplot() + geom_jitter(shape=16, position=position_jitter(0.2)) +
-  ggpubr::stat_compare_means(method = "wilcox.test") +
-  theme_classic() + theme(legend.position="top") + 
-  scale_fill_brewer(palette="Dark2") +
-  facet_grid(~Sex) + ylab('Smoking Scores')
-```
-
-
-### EpiSmokEr (Zhang et al 2016)
-
-
-```{r}
-## Male
-SSc.male.ad <- pheno.cn.ad.male %>% filter(DIAGNOSIS == "Alzheimer's disease") %>% dplyr::select(smokingScore2)
-SSc.male.cn <- pheno.cn.ad.male %>% filter(DIAGNOSIS == "healthy control") %>% dplyr::select(smokingScore2)
-wilcox.stats.male <- wilcox.test(SSc.male.ad$smokingScore2, SSc.male.cn$smokingScore2)
-wilcox.stats.male
-```
-
-
-```{r}
-## Female
-SSc.female.ad <- pheno.cn.ad.female %>% filter(DIAGNOSIS == "Alzheimer's disease") %>% dplyr::select(smokingScore2)
-SSc.female.cn <- pheno.cn.ad.female %>% filter(DIAGNOSIS == "healthy control") %>% dplyr::select(smokingScore2)
-wilcox.stats.female <- wilcox.test(SSc.female.ad$smokingScore2, SSc.female.cn$smokingScore2)
-wilcox.stats.female
-```
-
-```{r plot_SSc2, echo = F}
-ggplot(pheno, aes(x = DIAGNOSIS,y = smokingScore2, fill = DIAGNOSIS)) + 
-  geom_boxplot() + geom_jitter(shape=16, position=position_jitter(0.2)) +
-  ggpubr::stat_compare_means(method = "wilcox.test") +
-  theme_classic() + theme(legend.position="top") + 
-  scale_fill_brewer(palette="Dark2") +
-  facet_grid(~Sex) + ylab('Smoking Scores')
-```
-
-
-### Smoking scores (McCartney et al. 2018)
-
-```{r}
-## Male
-SSc.male.ad <- pheno.cn.ad.male %>% filter(DIAGNOSIS == "Alzheimer's disease") %>% dplyr::select(smokingScore3)
-SSc.male.cn <- pheno.cn.ad.male %>% filter(DIAGNOSIS == "healthy control") %>% dplyr::select(smokingScore3)
-wilcox.stats.male <- wilcox.test(SSc.male.ad$smokingScore3, SSc.male.cn$smokingScore3)
-wilcox.stats.male
-```
-
-```{r}
-## Female
-SSc.female.ad <- pheno.cn.ad.female %>% filter(DIAGNOSIS == "Alzheimer's disease") %>% dplyr::select(smokingScore3)
-SSc.female.cn <- pheno.cn.ad.female %>% filter(DIAGNOSIS == "healthy control") %>% dplyr::select(smokingScore3)
-wilcox.stats.female <- wilcox.test(SSc.female.ad$smokingScore3, SSc.female.cn$smokingScore3)
-wilcox.stats.female
-```
-
-
-```{r plot_SSc3, echo = F}
-ggplot(pheno, aes(x = DIAGNOSIS,y = smokingScore3, fill = DIAGNOSIS)) + 
   geom_boxplot() + geom_jitter(shape=16, position=position_jitter(0.2)) +
   ggpubr::stat_compare_means(method = "wilcox.test") +
   theme_classic() + theme(legend.position="top") + 

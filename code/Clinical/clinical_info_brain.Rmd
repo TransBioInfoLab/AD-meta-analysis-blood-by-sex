@@ -1,5 +1,5 @@
 ---
-title: "Integrative meta-analysis of epigenome-wide association studies identifies genomic and epigenomics differences in the brain and the blood in Alzheimer’s disease - Stratified by Sex"
+title: "Distinct sex-specific DNA methylation differences in Alzheimer’s disease"
 subtitle: 'Brain data clinical information'
 author:
   - Tiago Chedraoui Silva^[University of Miami]

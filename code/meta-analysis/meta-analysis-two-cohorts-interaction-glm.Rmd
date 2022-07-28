@@ -1,5 +1,5 @@
 ---
-title: "Integrative meta-analysis of epigenome-wide association studies identifies genomic and epigenomics differences in the brain and the blood in Alzheimer’s disease"
+title: "Distinct sex-specific DNA methylation differences in Alzheimer’s disease"
 subtitle: "Meta-analysis dataset - Interaction model - using bacon inflation- and bias-corrected P-values"
 author:
   - Tiago Chedraoui Silva^[University of Miami]
@@ -26,7 +26,7 @@ knitr::opts_chunk$set(echo = TRUE)
 knitr::opts_knit$set(root.dir = "../..")
 ```
 
-# Main libraries and configuration
+## Main libraries and configuration
 
 ```{R, message = FALSE, results = 'hide'}
 library(dplyr)
@@ -35,7 +35,6 @@ library(GenomicRanges)
 library(tidyr)
 ```
 
-# Meta-analysis of Genomic Regions: Single-cpg
 
 ## Paths
 ```{R}

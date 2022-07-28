@@ -1,5 +1,5 @@
 ---
-title: "Integrative meta-analysis of epigenome-wide association studies identifies genomic and epigenomics differences in the brain and the blood in Alzheimer’s disease - Stratified by Sex"
+title: "Distinct sex-specific DNA methylation differences in Alzheimer’s disease"
 subtitle: 'ADNI dataset'
 author:
   - Tiago Chedraoui Silva^[University of Miami]
@@ -250,7 +250,7 @@ df.probes <- data.frame(
   "Description" = c(
     "total number of probes in raw data",
     "probes with detection P < 0.01 for all samples",
-    "only probes that start with cg, no crosshyb, no X, no Y, no smoking, mafcut = 0.01"
+    "only probes that start with cg, no crosshyb, mafcut = 0.01"
   )
 )
 df.probes %>% gt::gt() 
@@ -815,20 +815,6 @@ dim(logistic_mixed_model_ad_cn.with.inflation$data.with.inflation)
 
 ```{r}
 plot(logistic_mixed_model_ad_cn.with.inflation$baconObject) 
-```
-
-```{r}
-components <- sample(1:3,prob=c(0.9999806, 9.072198e-06, 1.034219e-05),size=N,replace=TRUE)
-mus <- c(-0.1220183, 2.971339, -2.964668)
-sds <- sqrt(c( 0.7897917, 1.156797, 1.081619))
-
-ggplot(data.frame(ts = tstat(logistic_mixed_model_ad_cn.with.inflation$baconObject, corrected = F), 
-                  norm = rnorm(767366,0,1), 
-                  empirical = 0.9999806*rnorm(767366, -0.1220183, 0.7897917),
-                  mixture = rnorm(n=767366,mean=mus[components],sd=sds[components])), aes(x = ts)) + 
-  geom_histogram(aes(y = ..density..), bins = 100,  fill = "grey") + theme_classic() + 
-  geom_density(aes(x = norm)) + geom_density(aes(x = empirical), color = "red") +
-  geom_density(aes(x = mixture), color = "navy")
 ```
 
 

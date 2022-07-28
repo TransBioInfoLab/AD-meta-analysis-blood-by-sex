@@ -1,5 +1,5 @@
 ---
-title: "Integrative meta-analysis of epigenome-wide association studies identifies genomic and epigenomics differences in the brain and the blood in Alzheimer’s disease"
+title: "Distinct sex-specific DNA methylation differences in Alzheimer’s disease"
 subtitle: "Cross-tissue Meta-analysis dataset - using bacon inflation- and bias-corrected P-values"
 author:
   - Tiago Chedraoui Silva^[University of Miami]

@@ -1,8 +1,9 @@
 ---
-title: "Integrative meta-analysis of epigenome-wide association studies identifies genomic and epigenomics differences in the brain and the blood in Alzheimer’s disease - Stratified by Sex"
+title: "Distinct sex-specific DNA methylation differences in Alzheimer’s disease"
 subtitle: 'Data clinical information'
 author:
   - Tiago Chedraoui Silva^[University of Miami]
+  - Wei Zhang^[University of Miami]
   - Lily Wang^[University of Miami]
 date: "`r format(Sys.time(), '%d %B %Y')`"
 output: 
@@ -186,9 +187,8 @@ rbind(by.group[,-1],all) %>% gt() %>%
     title = "ADNI patient cohort selected for DNA methylation analysis",
     subtitle = paste0(
       "Patient cohort (N=",clinical %>% dplyr::filter(!is.na(DX)) %>% 
-        dplyr::filter(DX != "MCI") %>%  dplyr::filter(Visit_number == 1) %>%  dplyr::pull(RID) %>% unique %>% length(),"; ",
-      clinical %>% dplyr::filter(!is.na(DX)) %>% 
-        dplyr::filter(DX != "MCI") %>% dplyr::pull(RID) %>% length()," DNA samples)"
+        dplyr::group_by(RID) %>% dplyr::filter(age_at_visit == max(age_at_visit)) %>%  dplyr::pull(RID) %>% unique %>% length(),"; ",
+      clinical %>% dplyr::filter(!is.na(DX)) %>% dplyr::pull(RID) %>% length()," DNA samples)"
     )
   )
 ```
@@ -201,7 +201,7 @@ aux <- clinical %>% as.data.frame  %>%
 aux <- aux[,c("DX","RID")]
 colnames(aux)[1] <- "DX_last_visit"
 clinical <- left_join(clinical,aux)
-visit <- table(clinical$DX_first_visit,clinical$Visit_number) %>% as.data.frame.matrix 
+visit <- table(clinical$DX_last_visit,clinical$Visit_number) %>% as.data.frame.matrix 
 colnames(visit) <- paste0("Number at visit ",colnames(visit))
 rownames(visit) <- rownames(visit) %>% 
   gsub(x = ., pattern = "CN",replacement = "Cognitively Normal") %>%

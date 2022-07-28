@@ -1,6 +1,6 @@
 ---
-title: "AddNeuroMed dataset"
-author: "Tiago C. Silva, Lanyu Zhang, Lily Wang"
+title: "AddNeuroMed dataset - Stratified by Sex"
+author: "Tiago C. Silva, Wei Zhang, Lanyu Zhang, Lily Wang"
 date: "`r Sys.Date()`"
 output:
   rmarkdown::html_document:
@@ -19,8 +19,9 @@ editor_options:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE,warning = FALSE)
-knitr::opts_knit$set(root.dir = "./../../")
 ```
+
+Delete the remove smoking part and re-run the code.
 
 # Setup
 
@@ -29,24 +30,26 @@ library(dplyr)
 library(SummarizedExperiment)
 library(ExperimentHub)
 cohort <- "AddNeuroMed"
-dir.base <- "~/TBL Dropbox/Tiago Silva//AD-meta-analysis-blood-samples/"
+dir.base <- "~/TBL Dropbox/Wei Zhang/AD-meta-analysis-blood-samples/"
+dir.base2 <- "~/TBL Dropbox/Wei Zhang/AD-meta-analysis-blood-samples-bySex/"
 dir.data <- file.path(dir.base,"datasets/",cohort,"/") 
 dir.data.aux <- file.path(dir.base,"datasets/Aux/") 
 dir.data.raw <- file.path(dir.data,"/step1_download/") 
-dir.data.processed <- file.path(dir.data,"/step2_processed/") 
-dir.data.pca <- file.path(dir.data,"/step3_pca_filtering/") 
-dir.results <- file.path(dir.base,"analysis_results",cohort)
+dir.data.processed <- file.path(dir.data,"/step2_processed/withSmoke/") 
+dir.data.pca <- file.path(dir.data,"/step3_pca_filtering/withSmoke/") 
+dir.results <- file.path(dir.base2,"analysis_results",cohort,'withSmoke/')
+dir.results.glm <- file.path(dir.results,"/Logistic_regression_model/")
 for(p in grep("dir",ls(),value = T)) dir.create(get(p),recursive = TRUE,showWarnings = FALSE)
 ```
 
 
 # Data retrieval
 
-```{R, load_rgset_bs_filtered_min_65, include = FALSE, eval = FALSE}
+```{R, load_rgset_bs_filtered_min_65, include = FALSE, eval = T}
 load(file.path(dir.data.raw,"addNeuroMed_se_non_normalized.rda"))
 nb.samples.male <- sum(addNeuroMed$Sex.ch1 == "Male")
 nb.samples.female <- sum(addNeuroMed$Sex.ch1 == "Female")
-
+nb.probes.before.norm <- nrow(addNeuroMed)
 
 addNeuroMed <- addNeuroMed[,addNeuroMed$age.65.exclusion.ch1 == "Included"]
 nb.samples.age.65.exclusion <- ncol(addNeuroMed)
@@ -56,7 +59,7 @@ nb.samples.age.65.exclusion.female <- sum(addNeuroMed$Sex.ch1 == "Female")
 
 ```
 
-```{R, load_bs_filtered_min_65, include = FALSE, eval = FALSE}
+```{R, load_bs_filtered_min_65, include = FALSE, eval = T}
 addNeuroMed.se <- readRDS(file.path(dir.data.pca, "addNeuroMed_QNBMIQ_PCfiltered.RDS"))
 
 nb.samples.after.pca.female <-  sum(addNeuroMed.se$Sex.ch1 == "Female")
@@ -70,21 +73,24 @@ nb.samples.after.pca.male.ad.cn <-  sum(addNeuroMed.se$Sex.ch1 == "Male" & addNe
 ## Probes QC
 
 1. keep only probes that start with "cg"
-2. drop probes that are on X/Y
-3. drop probes where SNP with MAF >= 0.01 was present in the last 5 bp of the probe.
-4. Remove smoking related probes
+2. drop probes where SNP with MAF >= 0.01 was present in the last 5 bp of the probe.
 
 ```{R, eval = FALSE}
 library(minfi)
 library(wateRmelon)
 library(RPMM)
 library(DMRcate)
+library(sesameData)
 ```
 
 ```{R, eval = FALSE}
-annotation <- sesameDataGet("HM450.hg19.manifest") %>% as.data.frame %>% dplyr::filter(seqnames %in% c("chrX","chrY"))
+eh = query(ExperimentHub(),"sesameData")
+annotation <- eh[['EH3674']] %>% as.data.frame %>% dplyr::filter(seqnames %in% c("chrX","chrY"))
 betaSetXY <- addNeuroMed[rownames(addNeuroMed) %in% rownames(annotation), ]
 nb.chrXY.probes <- nrow(betaSetXY)
+
+# nrow(betaSetXY)
+# 9676
 
 betaSetXY <- betaSetXY[grep("cg",rownames(betaSetXY)),]
 nb.chrXY.cg.probes <- nrow(betaSetXY)
@@ -109,29 +115,8 @@ betaSetXY <- rmSNPandCH(
 # dim(betaSetXY)
 #  9546  284
 ```
-## Remove smoking probes
 
-```{R, eval = FALSE}
-smoking.file <- "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5267325/bin/NIHMS817273-supplement-001506_-_Supplemental_Tables.xlsx"
-if(!file.exists(file.path(dir.data.aux,basename(smoking.file)))) {
-  downloader::download(smoking.file,file.path(dir.data.aux,basename(smoking.file)))
-}
-smoking <- readxl::read_xlsx(
-  file.path(dir.data.aux,basename(smoking.file)),
-  sheet = "02",
-  skip = 2
-)
-smoking.sig.probes <- smoking %>%
-  dplyr::filter(`P-value` < 1*10^(-7)) %>%
-  dplyr::pull("Probe ID")
 
-betaSetXY <- betaSetXY[!rownames(betaSetXY) %in% smoking.sig.probes,]
-```
-
-```{R, include = F}
-# dim(betaSetXY)
-#  9541  284
-```
 
 
 ## Merge DNA methylation matrix on autosome with the one on chrX, chrY
@@ -142,7 +127,7 @@ identical(colnames(addNeuroMed.se), colnames(betaSetXY))
 betaQN_BMIQ <- rbind(assay(addNeuroMed.se), betaSetXY)
 table(base::duplicated(row.names(betaQN_BMIQ)))
 clinical.filtered.min.age_at_visit.65 <- colData(addNeuroMed.se)
-# 401590
+# 403939
 save(
   betaQN_BMIQ,
   clinical.filtered.min.age_at_visit.65,
@@ -173,7 +158,7 @@ addNeuroMed.se <- SummarizedExperiment::SummarizedExperiment(
   colData = samples.info
 )
 
-saveRDS(addNeuroMed.se, file = file.path(dir.data.processed,"addNeuroMed_se_withXY.rds")) # 401590 280
+saveRDS(addNeuroMed.se, file = file.path(dir.data.processed,"addNeuroMed_se_withXY.rds")) # 403939 280
 readr::write_csv(samples.info %>% as.data.frame, file = file.path(dir.data.processed,"samples.info_withXY.csv"))
 ```
 
@@ -181,7 +166,7 @@ readr::write_csv(samples.info %>% as.data.frame, file = file.path(dir.data.proce
 # Summary after QC steps
 
 
-```{R, eval = FALSE}
+```{R, eval = F, echo = F}
 addNeuroMed.se <- readRDS(file.path(dir.data.processed,"addNeuroMed_se_withXY.rds"))
 addNeuroMed.se <- addNeuroMed.se[,addNeuroMed.se$disease.state.ch1 %in% c("Alzheimer's disease" ,"control")]
 pheno_df <- colData(addNeuroMed.se) %>% as.data.frame
@@ -203,19 +188,14 @@ nb.probes.after.norm <- nrow(addNeuroMed.se)
 pheno.cn.ad <- colData(addNeuroMed.se)
 pheno.cn.ad.female <- pheno.cn.ad[pheno.cn.ad$Sex.ch1 == "Female" & pheno.cn.ad$disease.state.ch1 %in% c("Alzheimer's disease" ,"control"),]
 nb.samples.after.pca.female <- nrow(pheno.cn.ad.female)
-plyr::count(pheno.cn.ad.female$DX)
 ```
 
 ```{R}
 pheno.cn.ad.male <- pheno.cn.ad[pheno.cn.ad$Sex.ch1 == "Male" & pheno.cn.ad$disease.state.ch1 %in% c("Alzheimer's disease" ,"control"),]
-plyr::count(pheno.cn.ad.male$DX)
 nb.samples.after.pca.male <- nrow(pheno.cn.ad.male)
 ```
 
 
-# Summary after QC steps
-
-## Data and metadata
 ```{R}
 betaQN_BMIQ_PCfiltered <- readRDS(file.path(dir.data.processed, "addNeuroMed_se_withXY.rds"))
 nb.samples.after.pca <- ncol(betaQN_BMIQ_PCfiltered)
@@ -255,7 +235,7 @@ pheno %>%
 ## Numbers of samples and probes removed in each step
 
 ### Female
-```{R, eval = FALSE, echo=FALSE, include = F}
+```{R}
 df.samples <- data.frame(
   "Number of samples" =  c(
     nb.samples.age.65.exclusion.female, 
@@ -270,7 +250,7 @@ df.samples
 ```
 
 ### Male
-```{R, eval = FALSE, echo=FALSE, include = F}
+```{R}
 df.samples <- data.frame(
   "Number of samples" =  c(
     nb.samples.age.65.exclusion.male, 
@@ -285,7 +265,7 @@ df.samples
 ```
 
 
-```{R, eval = FALSE, echo=FALSE, include = F}
+```{R}
 # Create summary table
 df.probes <- data.frame(
   "Number of probes" = c(
@@ -294,7 +274,7 @@ df.probes <- data.frame(
   ),
   "Description" = c(
     "total number of probes in raw data",
-    "only probes that start with cg, no crosshyb, no smoking, mafcut = 0.01"
+    "only probes that start with cg, no crosshyb, include smoking probes, mafcut = 0.01"
   )
 )
 df.probes %>% gt::gt() 
@@ -329,7 +309,7 @@ XY.probes <- eh[["EH3131"]]
 any(XY.probes %in% rownames(se)) 
 ```
 
-## select a few smoking probes, and show they are removed
+## select a few smoking probes, and show they are included
 ```{R checking_smoking}
 any(
   c("cg16145216", "cg19406367",
@@ -355,7 +335,7 @@ table(rowSums(colData(se)[,c("B","NK","CD4T","CD8T","Mono","Neutro","Eosino")] %
 ## check outliers samples are not in datset anymore
 ```{R checking_outliers}
 outliers <- readr::read_csv(paste0(dir.data.pca, "addNeuroMed_PCs_usingBetas.csv"),col_types = readr::cols()) %>%
-  dplyr::filter(outlier_PC1 == 1 | outlier_PC2 == 1) %>% pull(X1) 
+  dplyr::filter(outlier_PC1 == 1 | outlier_PC2 == 1) %>% pull(`...1`) 
 head(outliers)
 head(colnames(se))
 any(outliers %in% colnames(se))
@@ -380,6 +360,29 @@ sm.density.compare(
 )
 ```
 
+## check annotated sex is identical to predicted sex
+
+```{r echo = F}
+pheno <- data.frame(colData (se))
+pheno$DIAGNOSIS <- factor(pheno$disease.state.ch1, levels = c("control", "mild cognitive impairment", "Alzheimer's disease"))
+pheno$barcodes <- row.names(pheno)
+pheno$Sex <- factor(pheno$Sex.ch1)
+pheno <- pheno %>% dplyr::select(
+  c(barcodes, Sex, age.ch1, 
+    DIAGNOSIS, 
+    B, NK,   CD4T, CD8T,   Mono, Neutro, Eosino
+  )
+)
+```
+
+
+```{r checking_sex_identical, message = FALSE}
+library(wateRmelon)
+betaSet <- assay(se)
+est_Sex <- estimateSex(betaSet, do_plot = FALSE)
+identical(factor(est_Sex$predicted_sex), pheno$Sex)
+```
+
 
 ```{R checking_part5, include = FALSE}
 rm(se)
@@ -388,8 +391,10 @@ rm(se)
 # Analysis
 
 ```{R analysis_data}
-addNeuroMed.se <- readRDS(file.path(dir.data.pca, "addNeuroMed_se_withXY.rds"))
-mvalues <- log2(assay(addNeuroMed.se)/(1 - assay(addNeuroMed.se)))
+addNeuroMed.se <- readRDS(file.path(dir.data.processed, "addNeuroMed_se_withXY.rds"))
+result_SSc <- readr::read_csv(file.path(dir.data,"addNeuroMed_Smoking_Scores.csv"))
+
+beta <- assay(addNeuroMed.se) * 100
 
 #  0 = control, 1 = AD, 2 = MCI
 pheno <- data.frame(colData (addNeuroMed.se))
@@ -402,7 +407,12 @@ pheno <- pheno %>% dplyr::select(
     B, NK,   CD4T, CD8T,   Mono, Neutro, Eosino
   )
 )
+pheno$granulocytes <- pheno$Eosino + pheno$Neutro
+
+pheno$smokingScore <- result_SSc[match(pheno$barcodes, result_SSc$SampleName),]$smokingScore
 ```
+
+
 
 ## Metadata structure
 ```{R}
@@ -414,88 +424,194 @@ str(pheno)
 plyr::count(pheno$DIAGNOSIS)
 ```
 
-```{R analysis_data_part2, eval = FALSE}
-mvalues <- mvalues[, pheno$barcodes]
+```{R analysis_data_part2}
 
 pheno.cn.ad <- pheno[pheno$DIAGNOSIS %in% c("control", "Alzheimer's disease"),]
 pheno.cn.ad$DIAGNOSIS <-  forcats::fct_drop(pheno.cn.ad$DIAGNOSIS)
-pheno.cn.ad.male <- pheno[pheno$Sex %in% "Male",]
-pheno.cn.ad.female <- pheno[pheno$Sex %in% "Female",]
+pheno.cn.ad.male <- pheno.cn.ad[pheno.cn.ad$Sex %in% "Male",]
+pheno.cn.ad.female <- pheno.cn.ad[pheno.cn.ad$Sex %in% "Female",]
 
+beta.cn.ad.male <- beta[, pheno.cn.ad.male$barcodes]
+beta.cn.ad.female <- beta[, pheno.cn.ad.female$barcodes]
 
-mvalues.cn.ad.male <- mvalues[, pheno.cn.ad.male$barcodes]
-mvalues.cn.ad.female <- mvalues[, pheno.cn.ad.female$barcodes]
-
-rm(mvalues)
-gc()
 ```
+
+```{r}
+plyr::count(pheno.cn.ad.female$DIAGNOSIS)
+pheno.cn.ad.female %>% dplyr::group_by(DIAGNOSIS) %>% dplyr::summarise(mean(age.ch1), sd(age.ch1)) 
+pheno.cn.ad.female %>% dplyr::summarise(mean(age.ch1), sd(age.ch1))
+```
+
+```{r}
+plyr::count(pheno.cn.ad.male$DIAGNOSIS)
+pheno.cn.ad.male %>% dplyr::group_by(DIAGNOSIS) %>% dplyr::summarise(mean(age.ch1), sd(age.ch1)) 
+pheno.cn.ad.male %>% dplyr::summarise(mean(age.ch1), sd(age.ch1))
+```
+
+```{r}
+x <- plyr::count(pheno.cn.ad,c("Sex","DIAGNOSIS"))
+ggpubr::ggbarplot(data = x,x = "DIAGNOSIS",y = "freq",facet.by = "Sex",color = "DIAGNOSIS",fill = "DIAGNOSIS") + ggtitle("AddNeuroMed") +  
+  theme(
+    axis.title.x = element_blank(),                                                                                      axis.text.x = element_blank(),
+    axis.ticks.x = element_blank())
+
+```
+
+## Wilcoxon test on smoking scores for AD vs controls
+
+
+### Male
+
+```{r}
+SSc.male.ad <- pheno.cn.ad.male %>% filter(DIAGNOSIS == "Alzheimer's disease") %>% dplyr::select(smokingScore)
+SSc.male.cn <- pheno.cn.ad.male %>% filter(DIAGNOSIS == "control") %>% dplyr::select(smokingScore)
+wilcox.stats.male <- wilcox.test(SSc.male.ad$smokingScore, SSc.male.cn$smokingScore)
+wilcox.stats.male
+```
+
+### Female
+
+```{r}
+SSc.female.ad <- pheno.cn.ad.female %>% filter(DIAGNOSIS == "Alzheimer's disease") %>% dplyr::select(smokingScore)
+SSc.female.cn <- pheno.cn.ad.female %>% filter(DIAGNOSIS == "control") %>% dplyr::select(smokingScore)
+wilcox.stats.female <- wilcox.test(SSc.female.ad$smokingScore, SSc.female.cn$smokingScore)
+wilcox.stats.female
+```
+
+```{r plot_SSc, echo = F}
+ggplot(pheno.cn.ad, aes(x = DIAGNOSIS,y = smokingScore, fill = DIAGNOSIS)) + 
+  geom_boxplot() + geom_jitter(shape=16, position=position_jitter(0.2)) +
+  ggpubr::stat_compare_means(method = "wilcox.test") +
+  theme_classic() + theme(legend.position="top") + 
+  scale_fill_brewer(palette="Dark2") +
+  facet_grid(~Sex) + ylab('Smoking Scores')
+```
+
+
+
+
+## Logistic Regression Model -- Without adjusting smoking score
 
 
 ```{R analysis, eval = FALSE}
-doParallel::registerDoParallel(cores = 4)
+doParallel::registerDoParallel(cores = 10)
 
-message("o Stating analysis - AD vs CN - MALE")
-results.ad.male <- plyr::adply(
-  .data = mvalues.cn.ad.male, 
+## Male
+
+message("o Stating analysis - AD vs CN")
+results.ad.glm.male <- plyr::adply(
+  .data = beta.cn.ad.male, 
   .margins = 1,
   .fun = function(one){
-    dat.cn.ad <- data.frame (mval = one, pheno.cn.ad.male)
-    tryCatch({
-      suppressMessages({
-        f <- lm(
-          mval ~ DIAGNOSIS + age.ch1 + B + NK + CD4T + CD8T + Mono + Neutro,
-          dat.cn.ad
-        )
-        lmer_ad_cn <- coef(summary(f)) [grep("DIAGNOSIS",rownames(coef(summary(f)) ),value = TRUE),]
-      })
-      return(lmer_ad_cn)
-    }, error = function(e) {message(e);return(NULL)})
+    dat.cn.ad <- data.frame (beta = one, pheno.cn.ad.male)
+    b <- glm(
+      DIAGNOSIS ~ beta + age.ch1  + B + NK + CD4T + Mono + granulocytes,
+      dat.cn.ad,
+      family = binomial
+    )
+    summary(b)
+    beta_results <- coef(summary(b)) [grep("beta",rownames(coef(summary(b)) ),value = TRUE),]
+    return(beta_results)
   },.parallel = TRUE, .progress = "time",.id = "cpg",.inform = FALSE
 )
 
 readr::write_csv(
-  x = results.ad.male, 
-  file = file.path(dir.results,"MALE_addNeuroMed_AD_vs_CN_results_with_blood_cell_type_proportions.csv")
+  x = results.ad.glm.male ,
+  file = file.path(dir.results.glm, "MALE_addNeuroMed_glm_diagnosis_vs_beta_and_covaritates_age_at_least_65_AD_vs_CN_results.csv")
 )
 
-doParallel::registerDoParallel(cores = 4)
+## Female
 
-message("o Stating analysis - AD vs CN - MALE")
-results.ad.female <- plyr::adply(
-  .data = mvalues.cn.ad.female, 
+results.ad.glm.female <- plyr::adply(
+  .data = beta.cn.ad.female, 
   .margins = 1,
   .fun = function(one){
-    dat.cn.ad <- data.frame (mval = one, pheno.cn.ad.female)
-    tryCatch({
-      suppressMessages({
-        f <- lm(
-          mval ~ DIAGNOSIS + age.ch1 + B + NK + CD4T + CD8T + Mono + Neutro,
-          dat.cn.ad
-        )
-        lmer_ad_cn <- coef(summary(f)) [grep("DIAGNOSIS",rownames(coef(summary(f)) ),value = TRUE),]
-      })
-      return(lmer_ad_cn)
-    }, error = function(e) {message(e);return(NULL)})
+    dat.cn.ad <- data.frame (beta = one, pheno.cn.ad.female)
+    b <- glm(
+      DIAGNOSIS ~ beta + age.ch1  + B + NK + CD4T + Mono + granulocytes,
+      dat.cn.ad,
+      family = binomial
+    )
+    summary(b)
+    beta_results <- coef(summary(b)) [grep("beta",rownames(coef(summary(b)) ),value = TRUE),]
+    return(beta_results)
   },.parallel = TRUE, .progress = "time",.id = "cpg",.inform = FALSE
 )
 
 readr::write_csv(
-  x = results.ad.female, 
-  file = file.path(dir.results,"FEMALE_addNeuroMed_AD_vs_CN_results_with_blood_cell_type_proportions.csv")
+  x = results.ad.glm.female ,
+  file = file.path(dir.results.glm, "FEMALE_addNeuroMed_glm_diagnosis_vs_beta_and_covaritates_age_at_least_65_AD_vs_CN_results.csv")
 )
 ```
+
+## Logistic Regression Model -- Adjust smoking score
+
+
+```{R analysis2, eval = FALSE}
+doParallel::registerDoParallel(cores = 10)
+
+## Male
+
+message("o Stating analysis - AD vs CN")
+results.ad.glm.male.SSc <- plyr::adply(
+  .data = beta.cn.ad.male, 
+  .margins = 1,
+  .fun = function(one){
+    dat.cn.ad <- data.frame (beta = one, pheno.cn.ad.male)
+    b <- glm(
+      DIAGNOSIS ~ beta + age.ch1  + B + NK + CD4T + Mono + granulocytes + smokingScore,
+      dat.cn.ad,
+      family = binomial
+    )
+    summary(b)
+    beta_results <- coef(summary(b)) [grep("beta",rownames(coef(summary(b)) ),value = TRUE),]
+    return(beta_results)
+  },.parallel = TRUE, .progress = "time",.id = "cpg",.inform = FALSE
+)
+
+readr::write_csv(
+  x = results.ad.glm.male.SSc ,
+  file = file.path(dir.results.glm, "MALE_addNeuroMed_glm_diagnosis_vs_beta_smoking_and_covaritates_age_at_least_65_AD_vs_CN_results.csv")
+)
+
+## Female
+
+message("o Stating analysis - AD vs CN")
+results.ad.glm.female <- plyr::adply(
+  .data = beta.cn.ad.female, 
+  .margins = 1,
+  .fun = function(one){
+    dat.cn.ad <- data.frame (beta = one, pheno.cn.ad.female)
+    b <- glm(
+      DIAGNOSIS ~ beta + age.ch1  + B + NK + CD4T + Mono + granulocytes + smokingScore,
+      dat.cn.ad,
+      family = binomial
+    )
+    summary(b)
+    beta_results <- coef(summary(b)) [grep("beta",rownames(coef(summary(b)) ),value = TRUE),]
+    return(beta_results)
+  },.parallel = TRUE, .progress = "time",.id = "cpg",.inform = FALSE
+)
+
+readr::write_csv(
+  x = results.ad.glm.female ,
+  file = file.path(path.to.hpc, path.result.glm, "FEMALE_addNeuroMed_glm_diagnosis_vs_beta_smoking_and_covaritates_age_at_least_65_AD_vs_CN_results.csv")
+)
+```
+
 
 
 ## Annotate results
 ```{R annotate, eval = FALSE}
 message("o Stating to annotate")
-addNeuroMed.se <- readRDS(file.path(dir.data.pca, "addNeuroMed_se_withXY.rds"))
+addNeuroMed.se <- readRDS(file.path(dir.data.processed, "addNeuroMed_se_withXY.rds"))
+
 load(file.path(dir.data.aux,"great_EPIC_array_annotation.rda"))
 load(file.path(dir.data.aux,"E073_15_coreMarks_segments.rda"))
 load(file.path(dir.data.aux,"meta_analysis_cpgs.rda"))
 
 annotate_results <- function(result, data.se){
-  result$fdr <- p.adjust(result$`Pr(>|t|)`,method = "fdr")
+  result$fdr <- p.adjust(result$`Pr(>|z|)`,method = "fdr")
   result <- cbind(
     result,
     rowRanges(data.se)[result$cpg] %>% as.data.frame() %>% dplyr::select(1:4)
@@ -516,29 +632,48 @@ annotate_results <- function(result, data.se){
   return(result)
 }
 
-colnames(results.ad.male)[1] <- "cpg"
-results.ad.annotated.male <- results.ad.male %>% annotate_results(addNeuroMed.se)
+colnames(results.ad.glm.male)[1] <- "cpg"
+results.ad.glm.male.annotated <- results.ad.glm.male %>% annotate_results(addNeuroMed.se)
 readr::write_csv(
-  x = results.ad.annotated.male,
-  file = file.path(dir.results,"MALE_addNeuroMed_AD_vs_CN_results_with_blood_cell_type_proportions_annotated.csv")
+  x = results.ad.glm.male.annotated,
+  file = file.path(dir.results.glm, "MALE_addNeuroMed_glm_diagnosis_vs_beta_and_covaritates_age_at_least_65_AD_vs_CN_results_annotated.csv")
 )
 
-
-
-colnames(results.ad.female)[1] <- "cpg"
-results.ad.annotated.female <- results.ad.female %>% annotate_results(addNeuroMed.se)
+colnames(results.ad.glm.female)[1] <- "cpg"
+results.ad.glm.annotated.female <- results.ad.glm.female %>% annotate_results(addNeuroMed.se)
 readr::write_csv(
-  x = results.ad.annotated.female,
-  file = file.path(dir.results,"FEMALE_addNeuroMed_AD_vs_CN_results_with_blood_cell_type_proportions_annotated.csv")
+  x = results.ad.glm.annotated.female,
+  file = file.path(dir.results.glm,"FEMALE_addNeuroMed_glm_diagnosis_vs_beta_and_covaritates_age_at_least_65_AD_vs_CN_results_annotated.csv")
+)
+
+colnames(results.ad.glm.male.SSc)[1] <- "cpg"
+results.ad.glm.male.annotated.SSc <- results.ad.glm.male.SSc %>% annotate_results(addNeuroMed.se)
+readr::write_csv(
+  x = results.ad.glm.male.annotated.SSc,
+  file = file.path(dir.results.glm, "MALE_addNeuroMed_glm_diagnosis_vs_beta_smoking_and_covaritates_age_at_least_65_AD_vs_CN_results_annotated.csv")
+)
+
+colnames(results.ad.glm.female.SSc)[1] <- "cpg"
+results.ad.glm.annotated.female.SSc <- results.ad.glm.female.SSc %>% annotate_results(addNeuroMed.se)
+readr::write_csv(
+  x = results.ad.glm.annotated.female.SSc,
+  file = file.path(dir.results.glm,"FEMALE_addNeuroMed_glm_diagnosis_vs_beta_smoking_and_covaritates_age_at_least_65_AD_vs_CN_results_annotated.csv")
 )
 ```
 
+
 ```{R read_results, include = FALSE}
-results.ad.female <- readr::read_csv(
-  file.path(dir.results,"FEMALE_addNeuroMed_AD_vs_CN_results_with_blood_cell_type_proportions_annotated.csv")
+results.ad.glm.male <- readr::read_csv(
+  file.path(dir.results.glm,"MALE_addNeuroMed_glm_diagnosis_vs_beta_and_covaritates_age_at_least_65_AD_vs_CN_results_annotated.csv")
 )
-results.ad.male <- readr::read_csv(
-  file.path(dir.results,"MALE_addNeuroMed_AD_vs_CN_results_with_blood_cell_type_proportions_annotated.csv")
+results.ad.glm.female <- readr::read_csv(
+  file.path(dir.results.glm,"FEMALE_addNeuroMed_glm_diagnosis_vs_beta_and_covaritates_age_at_least_65_AD_vs_CN_results_annotated.csv")
+)
+results.ad.glm.male.SSc <- readr::read_csv(
+  file.path(dir.results.glm,"MALE_addNeuroMed_glm_diagnosis_vs_beta_smoking_and_covaritates_age_at_least_65_AD_vs_CN_results_annotated.csv")
+)
+results.ad.glm.female.SSc <- readr::read_csv(
+  file.path(dir.results.glm,"FEMALE_addNeuroMed_glm_diagnosis_vs_beta_smoking_and_covaritates_age_at_least_65_AD_vs_CN_results_annotated.csv")
 )
 ```
 
@@ -575,25 +710,9 @@ estimation_of_inflation <- function(data){
   # inflation factor
   print("lambda.bacon")
   print(inflation(bc))
-  
-  
-  percent_null <- trunc ( estimates(bc)[1]*100, digits = 0)
-  percent_1  <- trunc ( estimates(bc)[2]*100, digits = 0 )
-  percent_2  <- 100 - percent_null - percent_1  
-  bc2 <- bacon(
-    teststatistics = NULL,
-    effectsizes =  data.with.inflation$Estimate.bacon,
-    standarderrors = data.with.inflation$StdErr.bacon,
-    na.exclude = TRUE, 
-    priors = list(
-      sigma = list(alpha = 1.28,  beta = 0.36), 
-      mu = list(lambda = c(0, 3, -3), tau = c(1000, 100, 100)), 
-      epsilon = list(gamma = c(percent_null, percent_1, percent_2)))
-  )
-  print("inflation")
-  print(inflation(bc2))
-  print("estimates")
-  print(estimates(bc2))
+  # bias
+  print("estimated bias")
+  print(bias(bc))
   
   ### 3. Create final dataset
   data.with.inflation <- data.frame(
@@ -604,85 +723,230 @@ estimation_of_inflation <- function(data){
     fdr.bacon = p.adjust(pval(bc), method = "fdr"),
     stringsAsFactors = FALSE
   )
-  
   data.with.inflation <- data.with.inflation %>% dplyr::select(-c(zvalue, chisq))
   return(
     list(
       "data.with.inflation" = data.with.inflation,
       "inflationFactor" =   inflationFactor,
-      "estimatedInflation" = inflation(bc)
+      "estimatedInflation" = inflation(bc),
+      "estimatedBias" = bias(bc)
     )
   )
 }
 ```
 
+## No adjust smoking
 
+```{R estimation_of_inflation_ad1}
+results.ad.glm.male.with.inflation <- estimation_of_inflation(data = results.ad.glm.male)
+```
 
-```{R estimation_of_inflation_ad}
-results.ad.with.inflation.female <- estimation_of_inflation(data = results.ad.female)
-
+```{r eval = F}
 readr::write_csv(
-  x = results.ad.with.inflation.female$data.with.inflation,
-  file = file.path(dir.results,"MALE_addNeuroMed_AD_vs_CN_results_with_blood_cell_type_proportions_and_SVA_annotated_with_inflation.csv")
+  x = results.ad.glm.male.with.inflation$data.with.inflation,
+  file = file.path(dir.results.glm,"MALE_addNeuroMed_glm_diagnosis_vs_beta_and_covaritates_age_at_least_65_AD_vs_CN_annotated_with_inflation.csv")
 )
+```
 
 
+```{r}
 qqPlot(
-  results.ad.with.inflation.female$data.with.inflation$Pr...t.., ci = TRUE, 
+  results.ad.glm.male.with.inflation$data.with.inflation$Pr...z.., ci = TRUE, 
   main = paste0(cohort, " cohort")
 ) + text(
   x = 0.5, 
-  y = 5,
-  labels = bquote(lambda == .(format(results.ad.with.inflation.female$inflationFactor,digits = 4))),
+  y = 3,
+  labels = bquote(lambda == .(format(results.ad.glm.male.with.inflation$inflationFactor,digits = 4))),
   pos = 4
 ) + text(
   x = 0.5, 
-  y = 4,
-  labels = bquote(lambda[bacon] == .(format(results.ad.with.inflation.female$estimatedInflation,digits = 4))),
+  y = 2.5,
+  labels = bquote(lambda[bacon] == .(format(results.ad.glm.male.with.inflation$estimatedInflation,digits = 4))),
   pos = 4
 )
 ```
 
-```{R estimation_of_inflation_ad}
-results.ad.with.inflation.male <- estimation_of_inflation(data = results.ad.male)
+```{R estimation_of_inflation_ad2}
+results.ad.glm.female.with.inflation <- estimation_of_inflation(data = results.ad.glm.female)
+```
 
+```{r eval = F}
 readr::write_csv(
-  x = results.ad.with.inflation.male$data.with.inflation,
-  file = file.path(dir.results,"MALE_addNeuroMed_AD_vs_CN_results_with_blood_cell_type_proportions_and_SVA_annotated_with_inflation.csv")
+  x = results.ad.glm.female.with.inflation$data.with.inflation,
+  file = file.path(dir.results.glm,"FEMALE_addNeuroMed_glm_diagnosis_vs_beta_and_covaritates_age_at_least_65_AD_vs_CN_annotated_with_inflation.csv")
 )
+```
 
-
+```{r}
 qqPlot(
-  results.ad.with.inflation.male$data.with.inflation$Pr...t.., ci = TRUE, 
+  results.ad.glm.female.with.inflation$data.with.inflation$Pr...z.., ci = TRUE, 
   main = paste0(cohort, " cohort")
 ) + text(
   x = 0.5, 
-  y = 5,
-  labels = bquote(lambda == .(format(results.ad.with.inflation.male$inflationFactor,digits = 4))),
+  y = 3,
+  labels = bquote(lambda == .(format(results.ad.glm.female.with.inflation$inflationFactor,digits = 4))),
   pos = 4
 ) + text(
   x = 0.5, 
-  y = 4,
-  labels = bquote(lambda[bacon] == .(format(results.ad.with.inflation.male$estimatedInflation,digits = 4))),
+  y = 2.5,
+  labels = bquote(lambda[bacon] == .(format(results.ad.glm.female.with.inflation$estimatedInflation,digits = 4))),
   pos = 4
 )
 ```
 
-# Venn diagram 
-## Significant cpgs (with bacon pvalue <1E-5) 
 
-```{R venn_bacon, fig.width = 8, fig.height = 8}
-library(RVenn)
+## Adjust smoking
+
+```{R estimation_of_inflation_ad3}
+results.ad.glm.male.with.inflation.SSc <- estimation_of_inflation(data = results.ad.glm.male.SSc)
+```
+
+```{r eval = F}
+readr::write_csv(
+  x = results.ad.glm.male.with.inflation.SSc$data.with.inflation,
+  file = file.path(dir.results.glm,"MALE_addNeuroMed_glm_diagnosis_vs_beta_smoking_and_covaritates_age_at_least_65_AD_vs_CN_annotated_with_inflation.csv")
+)
+```
+
+```{r}
+qqPlot(
+  results.ad.glm.male.with.inflation.SSc$data.with.inflation$Pr...z.., ci = TRUE, 
+  main = paste0(cohort, " cohort")
+) + text(
+  x = 0.5, 
+  y = 3,
+  labels = bquote(lambda == .(format(results.ad.glm.male.with.inflation.SSc$inflationFactor,digits = 4))),
+  pos = 4
+) + text(
+  x = 0.5, 
+  y = 2.5,
+  labels = bquote(lambda[bacon] == .(format(results.ad.glm.male.with.inflation.SSc$estimatedInflation,digits = 4))),
+  pos = 4
+)
+```
+
+```{R estimation_of_inflation_ad4}
+results.ad.glm.female.with.inflation.SSc <- estimation_of_inflation(data = results.ad.glm.female.SSc)
+```
+
+```{r eval = F}
+readr::write_csv(
+  x = results.ad.glm.female.with.inflation.SSc$data.with.inflation,
+  file = file.path(dir.results.glm,"FEMALE_addNeuroMed_glm_diagnosis_vs_beta_smoking_and_covaritates_age_at_least_65_AD_vs_CN_annotated_with_inflation.csv")
+)
+```
+
+```{r}
+
+qqPlot(
+  results.ad.glm.female.with.inflation.SSc$data.with.inflation$Pr...z.., ci = TRUE, 
+  main = paste0(cohort, " cohort")
+) + text(
+  x = 0.5, 
+  y = 3,
+  labels = bquote(lambda == .(format(results.ad.glm.female.with.inflation.SSc$inflationFactor,digits = 4))),
+  pos = 4
+) + text(
+  x = 0.5, 
+  y = 2.5,
+  labels = bquote(lambda[bacon] == .(format(results.ad.glm.female.with.inflation.SSc$estimatedInflation,digits = 4))),
+  pos = 4
+)
+```
+
+
+# Smoking effects 
+
+## spearman correlation
+
+
+```{r}
+effect.size.ad.glm.bacon <- data.frame(
+  non.Adjust.Smoke.male = results.ad.glm.male.with.inflation$data.with.inflation$Estimate.bacon,
+  Adjust.Smoke.male = results.ad.glm.male.with.inflation.SSc$data.with.inflation$Estimate.bacon,
+  non.Adjust.Smoke.female = results.ad.glm.female.with.inflation$data.with.inflation$Estimate.bacon,
+  Adjust.Smoke.female = results.ad.glm.female.with.inflation.SSc$data.with.inflation$Estimate.bacon
+  )
+```
+
+
+```{r}
+## male 
+cor.test(effect.size.ad.glm.bacon$non.Adjust.Smoke.male, effect.size.ad.glm.bacon$Adjust.Smoke.male,
+         method = 'spearman')
+```
+
+```{r}
+## female 
+cor.test(effect.size.ad.glm.bacon$non.Adjust.Smoke.female, effect.size.ad.glm.bacon$Adjust.Smoke.female,
+         method = 'spearman')
+```
+
+### Scatter plot
+
+```{r echo = F, message = F}
+library(ggpubr)
+## male 
+ggscatter(data = effect.size.ad.glm.bacon, x = 'non.Adjust.Smoke.male',
+          y = 'Adjust.Smoke.male', size = 0.5, cor.coef	= T, cor.method = "spearman",
+          xlab = 'Effect size of non-adjust smoking',
+          ylab = 'Effect size of adjusted smoking',
+          title = 'Male') 
+```
+```{r echo = F, message = F}
+## Female
+ggscatter(data = effect.size.ad.glm.bacon, x = 'non.Adjust.Smoke.female',
+          y = 'Adjust.Smoke.female', size = 0.5, cor.coef	= T, cor.method = "spearman",
+          xlab = 'Effect size of non-adjust smoking',
+          ylab = 'Effect size of adjusted smoking',
+          title = 'Female') 
+```
+
+
+
+## Venn diagram 
+
+### Significant cpgs (with bacon pvalue <1E-3) 
+
+
+```{R venn_bacon, fig.width = 8, fig.height = 8, message = F}
+library(VennDiagram)
 
 list <-  list(
-  "\nMALE AD vs CN\n(Bacon p-values < 1E-5)" = results.ad.with.inflation.male$data.with.inflation$cpg[results.ad.with.inflation.male$data.with.inflation$pValue.bacon < 1E-5],
-  "\FEMALE AD vs CN\n(Bacon p-values < 1E-5)" = results.ad.with.inflation.female$data.with.inflation$cpg[results.ad.with.inflation.female$data.with.inflation$pValue.bacon < 1E-5]
+  "\nMALE AD vs CN \nwithout adjust smoking\n(Bacon p-values < 1E-3)" = results.ad.glm.male.with.inflation$data.with.inflation$cpg[results.ad.glm.male.with.inflation$data.with.inflation$pValue.bacon < 1E-3],
+  "\nMALE AD vs CN \nadjusted smoking\n(Bacon p-values < 1E-3)" = results.ad.glm.male.with.inflation.SSc$data.with.inflation$cpg[results.ad.glm.male.with.inflation.SSc$data.with.inflation$pValue.bacon < 1E-3]
 )
-venn <- Venn(list)
-p <- ggvenn(venn, fill = c("darkgreen","gold")) + theme_void() + guides(fill = FALSE)
-print(p, vp=grid::viewport(gp=grid::gpar(cex = 0.4)))
+venn <- venn.diagram(list, filename = NULL, 
+                     col = "transparent",
+                     fill = c("blue", "green"),
+                     alpha = 0.30, scaled = F, 
+                     direct.area = F, 
+                     sub.cex = 0.3,
+                     height = 480 , 
+                     width = 480 , 
+                     cat.pos = c(-27, 27),
+                     print.mode=c("raw","percent"),
+                     output=TRUE,compression = "lzw")
+grid.draw(venn)
 ```
 
+```{R venn_bacon2, fig.width = 8, fig.height = 8}
+list <-  list(
+  "\nFEMALE AD vs CN \nwithout adjust smoking\n(Bacon p-values < 1E-3)" = results.ad.glm.female.with.inflation$data.with.inflation$cpg[results.ad.glm.female.with.inflation$data.with.inflation$pValue.bacon < 1E-3],
+  "\nFEMALE AD vs CN \nadjusted smoking\n(Bacon p-values < 1E-3)" = results.ad.glm.female.with.inflation.SSc$data.with.inflation$cpg[results.ad.glm.female.with.inflation.SSc$data.with.inflation$pValue.bacon < 1E-3]
+)
+venn <- venn.diagram(list, filename = NULL, 
+                     col = "transparent",
+                     fill = c("blue", "green"),
+                     alpha = 0.30, scaled = F, 
+                     direct.area = F, 
+                     sub.cex = 0.3,
+                     height = 480 , 
+                     width = 480 , 
+                     print.mode=c("raw","percent"),
+                     output=TRUE,compression = "lzw")
+grid.draw(venn)
+```
 
 # Session information
 ```{R}
