@@ -130,7 +130,7 @@ install.packages("/path/to/ADNIMERGE_0.0.1.tar.gz", repos = NULL, type = "source
 The platform information are: 
 
 ```r
-version  R version 4.2.0 (2022-04-22)
+ version  R version 4.2.0 (2022-04-22)
  os       macOS Big Sur 11.4          
  system   x86_64, darwin17.0          
  ui       RStudio                     
