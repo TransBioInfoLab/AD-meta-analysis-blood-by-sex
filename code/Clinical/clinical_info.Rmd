@@ -1,5 +1,5 @@
 ---
-title: "Integrative meta-analysis of epigenome-wide association studies identifies genomic and epigenomics differences in the brain and the blood in Alzheimer’s disease"
+title: "Integrative meta-analysis of epigenome-wide association studies identifies genomic and epigenomics differences in the brain and the blood in Alzheimer’s disease - Stratified by Sex"
 subtitle: 'Data clinical information'
 author:
   - Tiago Chedraoui Silva^[University of Miami]
@@ -39,7 +39,7 @@ dir.data <- file.path("../AD-meta-analysis-blood-samples/datasets/")
 adni.se <- readRDS(
   file.path(
     dir.data,
-    "ADNI/data/DNA_methylation/pca_filtering/ADNI_QNBMIQ_PCfiltered_min_age_at_visit_65.RDS"
+    "ADNI/data/DNA_methylation/pca_filtering/withSmoke/ADNI_QNBMIQ_PCfiltered_min_age_at_visit_65_AD_CN.RDS"
   )
 )
 clinical <- colData(adni.se)  %>% as.data.frame
@@ -119,15 +119,14 @@ ggbarplot(
 
 ```{r adni,message=FALSE, echo=FALSE}
 by.group <- clinical %>% as.data.frame  %>% 
-  dplyr::filter(Visit_number == 1) %>% 
+  dplyr::group_by(RID) %>% 
+  dplyr::filter(age_at_visit == max(age_at_visit)) %>%
   dplyr::filter(!is.na(DX)) %>% 
-  dplyr::filter(DX != "MCI") %>% 
   dplyr::group_by(DX) %>% 
   dplyr::summarize(
     "Diagnosis Groups" =  paste0(
       unique(DX)  %>% 
         gsub(x = ., pattern = "CN",replacement = "Cognitively Normal") %>%
-        gsub(x = ., pattern = "MCI",replacement = "Mild Cognitive Impairment") %>% 
         gsub(x = ., pattern = "Dementia",replacement = "Alzheimer's disease") ,
       " (n=",n(),")"
     ),
@@ -147,9 +146,9 @@ by.group <- clinical %>% as.data.frame  %>%
   )
 
 all <- clinical %>% as.data.frame  %>% 
-  dplyr::filter(Visit_number == 1) %>% 
+  dplyr::group_by(RID) %>% 
+  dplyr::filter(age_at_visit == max(age_at_visit)) %>%
   dplyr::filter(!is.na(DX)) %>% 
-  dplyr::filter(DX != "MCI") %>% 
   dplyr::summarize(
     "Diagnosis Groups" =  paste0("All (n=",n(),")"),
     "Age in years Mean (SD)" = paste0(
@@ -197,20 +196,20 @@ rbind(by.group[,-1],all) %>% gt() %>%
 
 ```{r adni_visits, echo=FALSE, message=FALSE}
 aux <- clinical %>% as.data.frame  %>% 
-  dplyr::filter(clinical$Visit_number == 1) 
+  dplyr::group_by(RID) %>% 
+  dplyr::filter(age_at_visit == max(age_at_visit))
 aux <- aux[,c("DX","RID")]
-colnames(aux)[1] <- "DX_first_visit"
+colnames(aux)[1] <- "DX_last_visit"
 clinical <- left_join(clinical,aux)
 visit <- table(clinical$DX_first_visit,clinical$Visit_number) %>% as.data.frame.matrix 
 colnames(visit) <- paste0("Number at visit ",colnames(visit))
 rownames(visit) <- rownames(visit) %>% 
   gsub(x = ., pattern = "CN",replacement = "Cognitively Normal") %>%
-  gsub(x = ., pattern = "MCI",replacement = "Mild Cognitive Impairment") %>% 
   gsub(x = ., pattern = "AD",replacement = "Alzheimer's disease") 
 visit  %>% dplyr::slice(c(1,2)) %>%  gt(rownames_to_stub = TRUE,groupname_col = "D") %>%  tab_header(
   title = "ADNI patient cohort selected for DNA methylation analysis"
 ) %>% tab_row_group(
-  label = "Diagnosis at first visit",
+  label = "Diagnosis at last visit",
   rows =  everything()
 )
 ```
@@ -221,15 +220,14 @@ visit  %>% dplyr::slice(c(1,2)) %>%  gt(rownames_to_stub = TRUE,groupname_col = 
 ```{r adni_female,message=FALSE, echo=FALSE}
 by.group <- clinical %>% as.data.frame  %>% 
   dplyr::filter(PTGENDER == "Female") %>% 
-  dplyr::filter(Visit_number == 1) %>% 
+  dplyr::group_by(RID) %>% 
+  dplyr::filter(age_at_visit == max(age_at_visit)) %>%
   dplyr::filter(!is.na(DX)) %>% 
-  dplyr::filter(DX != "MCI") %>% 
   dplyr::group_by(DX) %>% 
   dplyr::summarize(
     "Diagnosis Groups" =  paste0(
       unique(DX)  %>% 
         gsub(x = ., pattern = "CN",replacement = "Cognitively Normal") %>%
-        gsub(x = ., pattern = "MCI",replacement = "Mild Cognitive Impairment") %>% 
         gsub(x = ., pattern = "Dementia",replacement = "Alzheimer's disease") ,
       " (n=",n(),")"
     ),
@@ -250,9 +248,9 @@ by.group <- clinical %>% as.data.frame  %>%
 
 all <- clinical %>% as.data.frame  %>% 
   dplyr::filter(PTGENDER == "Female") %>% 
-  dplyr::filter(Visit_number == 1) %>% 
+  dplyr::group_by(RID) %>% 
+  dplyr::filter(age_at_visit == max(age_at_visit)) %>%
   dplyr::filter(!is.na(DX)) %>% 
-  dplyr::filter(DX != "MCI") %>% 
   dplyr::summarize(
     "Diagnosis Groups" =  paste0("All (n=",n(),")"),
     "Age in years Mean (SD)" = paste0(
@@ -290,7 +288,8 @@ rbind(by.group[,-1],all) %>% gt() %>%
     title = "ADNI patient cohort selected for DNA methylation analysis",
     subtitle = paste0(
       "Patient cohort (N=",clinical %>% dplyr::filter(!is.na(DX)) %>% 
-        dplyr::filter(DX != "MCI" & PTGENDER == "Female") %>%  dplyr::filter(Visit_number == 1) %>%  dplyr::pull(RID) %>% unique %>% length(),"; ",
+        dplyr::filter(DX != "MCI" & PTGENDER == "Female") %>%  dplyr::group_by(RID) %>% 
+        dplyr::filter(age_at_visit == max(age_at_visit)) %>%  dplyr::pull(RID) %>% unique %>% length(),"; ",
       clinical %>% dplyr::filter(!is.na(DX)) %>% 
         dplyr::filter(DX != "MCI" & PTGENDER == "Female") %>% dplyr::pull(RID) %>% length()," DNA samples)"
     )
@@ -306,15 +305,14 @@ rbind(by.group[,-1],all) %>% gt() %>%
 ```{r adni_male,message=FALSE, echo=FALSE}
 by.group <- clinical %>% as.data.frame  %>% 
   dplyr::filter(PTGENDER == "Male") %>% 
-  dplyr::filter(Visit_number == 1) %>% 
+  dplyr::group_by(RID) %>% 
+  dplyr::filter(age_at_visit == max(age_at_visit)) %>%
   dplyr::filter(!is.na(DX)) %>% 
-  dplyr::filter(DX != "MCI") %>% 
   dplyr::group_by(DX) %>% 
   dplyr::summarize(
     "Diagnosis Groups" =  paste0(
       unique(DX)  %>% 
         gsub(x = ., pattern = "CN",replacement = "Cognitively Normal") %>%
-        gsub(x = ., pattern = "MCI",replacement = "Mild Cognitive Impairment") %>% 
         gsub(x = ., pattern = "Dementia",replacement = "Alzheimer's disease") ,
       " (n=",n(),")"
     ),
@@ -335,9 +333,9 @@ by.group <- clinical %>% as.data.frame  %>%
 
 all <- clinical %>% as.data.frame  %>% 
   dplyr::filter(PTGENDER == "Male") %>% 
-  dplyr::filter(Visit_number == 1) %>% 
+  dplyr::group_by(RID) %>% 
+  dplyr::filter(age_at_visit == max(age_at_visit)) %>%
   dplyr::filter(!is.na(DX)) %>% 
-  dplyr::filter(DX != "MCI") %>% 
   dplyr::summarize(
     "Diagnosis Groups" =  paste0("All (n=",n(),")"),
     "Age in years Mean (SD)" = paste0(
@@ -375,8 +373,10 @@ rbind(by.group[,-1],all) %>% gt() %>%
     title = "ADNI patient cohort selected for DNA methylation analysis",
     subtitle = paste0(
       "Patient cohort (N=",clinical %>% dplyr::filter(!is.na(DX)) %>% 
-        dplyr::filter(DX != "MCI" & PTGENDER == "Male") %>%  dplyr::filter(Visit_number == 1) %>%  dplyr::pull(RID) %>% unique %>% length(),"; ",
-      clinical %>% dplyr::filter(!is.na(DX)) %>% 
+        dplyr::filter(DX != "MCI" & PTGENDER == "Male") %>%  dplyr::group_by(RID) %>% 
+        dplyr::filter(age_at_visit == max(age_at_visit)) %>%
+        dplyr::pull(RID) %>% unique %>% length(),"; ",
+        clinical %>% dplyr::filter(!is.na(DX)) %>% 
         dplyr::filter(DX != "MCI" & PTGENDER == "Male") %>% dplyr::pull(RID) %>% length()," DNA samples)"
     )
   )
@@ -399,7 +399,7 @@ writexl::write_xlsx(
 
 ```{R echo = FALSE}
 aibl.se <- readRDS(
-  file.path(dir.data,"AIBL/pca_filtering/AIBL_QNBMIQ_PCfiltered_age_at_least_65.RDS")
+  file.path(dir.data,"AIBL/pca_filtering/withSmoke/AIBL_QNBMIQ_PCfiltered_age_at_least_65.RDS")
 )
 clinical <- colData(aibl.se)
 ```
@@ -560,7 +560,7 @@ rbind(aibl.by.groups,aibl.all) %>%  gt() %>%
 
 ```{R echo = FALSE}
 AddNeuroMed.se <- readRDS(
-  file.path(dir.data,"AddNeuroMed/step3_pca_filtering/addNeuroMed_QNBMIQ_PCfiltered.RDS")
+  file.path(dir.data,"AddNeuroMed/step3_pca_filtering/withSmoke/addNeuroMed_QNBMIQ_PCfiltered.RDS")
 )
 clinical <- colData(AddNeuroMed.se)
 ```
