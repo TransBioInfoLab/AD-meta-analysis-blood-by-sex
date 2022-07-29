@@ -1,17 +1,16 @@
-# Integrative analyses revealed sex-specific DNA methylation differences that underlie Alzheimer’s disease
+# Distinct sex-specific DNA methylation differences in Alzheimer’s disease
 
 Tiago C. Silva, Wei Zhang, Juan I. Young,  Lissette Gomez, Michael A. Schmidt,  Xi Chen, Eden R. Martin, Lily Wang
-
-# Citing this repository
-[![DOI](https://zenodo.org/badge/457491267.svg)](https://zenodo.org/badge/latestdoi/457491267)
 
 ### Description
 
 This github repository includes scripts used for the analyses in the above manuscript. 
 
-In this work, we performed a sex-specific meta-analysis of two large independent blood-based epigenome-wide association studies, the ADNI and AIBL studies (see references below), with a total of 1284 whole blood samples (633 female samples and 651 male samples). Furthermore, to identify blood-based DNA methylation markers that also change with underlying neuropathology in the brain, we next performed a sex-specific cross-tissue meta-analysis by combining these blood DNA methylation datasets with four additional DNA methylation datasets, which included a total of  1,030 prefrontal cortex brain samples (642 female samples and 388 male samples). Moreover, we used two complementary analytical strategies within each dataset, a sex-stratified analysis that examined methylation to AD associations in male and female samples separately, and a methylation-by-sex interaction analysis that compared the magnitude of these associations between different sexes. Our findings highlighted distinct sex-specific epigenetic architectures underlie AD and provide a useful resource for future biomarker studies in AD.  
+In this work, we performed a sex-specific meta-analysis of two large independent blood-based epigenome-wide association studies, the ADNI and AIBL studies (see references below), with a total of 1284 whole blood samples (633 female samples and 651 male samples). Within each dataset, we used two complementary analytical strategies, a sex-stratified analysis that examined methylation to AD associations in male and female samples separately, and a methylation-by-sex interaction analysis that compared the magnitude of these associations between different sexes. After adjusting for age, estimated immune cell type proportions, batch effects, and correcting for inflation, the inverse-variance fixed-effects meta-analysis model was used to identify the most consistent DNAm differences across datasets. In addition, we also evaluated the performance of the sex-specific methylation-based risk prediction models for AD diagnosis using an independent external dataset. 
 
-### 1. Study cohorts, Preprocessing of DNA methylation data, Single Cohort analysis
+In the sex-stratified analysis, we identified 2 CpGs, mapped to the PRRC2A and RPS8 genes, significantly associated with AD in females at a 5% false discovery rate, and an additional 25 significant CpGs (21 in females, 4 in males) at P-value < 1×10^-5. In methylation-by-sex interaction analysis, we identified 5 significant CpGs at P-value < 10-5. Out-of-sample validations using the AddNeuroMed dataset showed in females, the best logistic prediction model included age, estimated immune cell-type proportions, and methylation risk scores (MRS) computed from 9 of the 23 CpGs identified in AD vs. CN analysis that are also available in AddNeuroMed dataset (AUC = 0.74, 95% CI: 0.65 - 0.83). In males, the best logistic prediction model included only age and MRS computed from 2 of the 5 CpGs identified in methylation-by-sex interaction analysis that are also available in the AddNeuroMed dataset (AUC = 0.70, 95% CI: 0.56 - 0.82). Overall, our results show that the DNA methylation differences in AD are largely distinct between males and females. As sex is a strong factor underlying phenotypic variability in AD, the results of our study are particularly relevant for a better understanding of the epigenetic architecture that underlie AD and for promoting precision medicine in AD. 
+
+### 1. Preprocessing of DNA methylation data, analysis of individual dataset 
 
 
 | File                 | Dataset | Link |
