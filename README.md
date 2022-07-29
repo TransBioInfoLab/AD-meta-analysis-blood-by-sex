@@ -51,6 +51,7 @@ This github repository includes scripts used for the analyses in the above manus
 | Result | File               | Link |
 |---------|--------------------|-------------|
 |Male| MALE_cross_tissue_meta_analysis_glm_using_AD_vs_CN_single_cpg.csv   |  [Link](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/results/MALE_cross_tissue_meta_analysis_glm_using_AD_vs_CN_single_cpg.csv) |
+|Female| FEMALE_cross_tissue_meta_analysis_glm_using_AD_vs_CN_single_cpg.csv   |  [Link](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/results/FEMALE_cross_tissue_meta_analysis_glm_using_AD_vs_CN_single_cpg.csv) |
 
 ### 4. Correlations between methylation levels of significant CpGs and DMRs in AD with expressions of nearby genes
 
