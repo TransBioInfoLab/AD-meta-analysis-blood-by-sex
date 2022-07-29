@@ -1,6 +1,6 @@
 # Distinct sex-specific DNA methylation differences in Alzheimer’s disease
 
-Tiago C. Silva, Wei Zhang, Juan I. Young,  Lissette Gomez, Michael A. Schmidt,  Xi Chen, Eden R. Martin, Lily Wang
+Tiago C. Silva, Wei Zhang, Juan I. Young,  Lissette Gomez, Michael A. Schmidt, Achintya Varma, X. Steven Chen, Eden R. Martin, Lily Wang
 
 ### Description
 
@@ -19,8 +19,8 @@ This github repository includes scripts used for the analyses in the above manus
 | ADNI/GLMM_models_ADNI.sas|   ADNI  | [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/code/ADNI/GLMM_models_ADNI.sas)|
 | AIBL/AIBL_bySex.Rmd           |   AIBL    | [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/code/AIBL/AIBL_bySex.rmd) |
 | Matched_data_ADNI/matched_RNA_DNAm_data_and_residuals_bySex.R          |   ADNI    | [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/code/Matched_data_ADNI/matched_RNA_DNAm_data_and_residuals_bySex.R) |
-| Clinical/clinical_info.Rmd          |   ADNI & AIBL & addneuromed   | [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/code/Clinical/clinical_info.Rmd) |
-| Clinical/clinical_info_brain.Rmd          |  GASPARONI & LONDON & MtSinai & ROSMAP  | [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/code/Clinical/clinical_info_brain.Rmd) |
+| Clinical/clinical_info.Rmd          |   ADNI, AIBL, AddNeuroMed   | [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/code/Clinical/clinical_info.Rmd) |
+| Clinical/clinical_info_brain.Rmd          |  GASPARONI, LONDON, MtSinai, ROSMAP  | [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/code/Clinical/clinical_info_brain.Rmd) |
 
 
 ### 2. Blood samples meta-analysis
