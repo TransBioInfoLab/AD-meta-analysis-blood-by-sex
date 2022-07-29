@@ -1,5 +1,3 @@
-options mprint; 
-
 %let dir = C:\DATA_for_SAS_models; 
 
 %let res = C:\RESULTS; 
