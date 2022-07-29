@@ -16,6 +16,7 @@ This github repository includes scripts used for the analyses in the above manus
 | File                 | Dataset | Link |
 |----------------------|-------------|-------------|
 | ADNI/ADNI_SAS_bySex.Rmd  |   ADNI  | [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/code/ADNI/ADNI_SAS_bySex.Rmd) |
+| ADNI/GLMM_models_ADNI.sas|   ADNI  | [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/code/ADNI/GLMM_models_ADNI.sas)|
 | AIBL/AIBL_bySex.Rmd           |   AIBL    | [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/code/AIBL/AIBL_bySex.rmd) |
 | Matched_data_ADNI/matched_RNA_DNAm_data_and_residuals_bySex.R          |   ADNI    | [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/code/Matched_data_ADNI/matched_RNA_DNAm_data_and_residuals_bySex.R) |
 | Clinical/clinical_info.Rmd          |   ADNI & AIBL & addneuromed   | [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/code/Clinical/clinical_info.Rmd) |
