@@ -1,0 +1,176 @@
+title: "Correlation and overlap with genetic susceptibility loci"
+subtitle: 'mQTL analysis'
+authors:
+  - Lissette Gomez^[University of Miami]
+  - Lily Wang^[University of Miami]
+
+
+### Reading result files
+femCpGs <- read.csv("femalesCpGs.csv")
+maleCpGs <- read.csv("malesCpGs.csv")
+intCpGs <- read.csv("interactionCpGs.csv")
+
+
+### Reading database files and merging with results
+blood <- read.csv("../../assoc_meta_all.csv.gz")
+blood$sig <- ifelse(blood$cistrans == "TRUE" & blood$pval_are < 1e-8, 1, 
+                    ifelse(blood$cistrans == "FALSE" & blood$pval_are < 1e-14, 1, 0))
+bloodsig <- blood[which(blood$sig == 1),]
+write.csv(bloodsig, "assoc_meta_all_sigBloodCpGsALL.csv")
+
+femCpGs_bloodmQTLs <- merge(femCpGs, bloodsig, by = "cpg")
+write.csv(femCpGs_bloodmQTLs, "femalesCpGs_bloodmQTLs.csv")
+
+maleCpGs_bloodmQTLs <- merge(maleCpGs, bloodsig, by = "cpg")
+write.csv(maleCpGs_bloodmQTLs, "malesCpGs_bloodmQTLs.csv")
+
+intCpGs_bloodmQTLs <- merge(intCpGs, bloodsig, by = "cpg")
+write.csv(intCpGs_bloodmQTLs, "intCpGs_bloodmQTLs.csv")
+
+
+### Anotation
+library(dplyr)
+library(ELMER.data)
+library(sesameData)
+
+probes.info <- sesameDataGet("HM450.hg19.manifest") %>% as.data.frame()
+probes.info <- probes.info[, c("seqnames", "start", "end")]
+colnames(probes.info)[1] <- "chr"
+probes.info$chr <- as.character(probes.info$chr)
+
+UCSC_annot <- read.csv("../../infinium-methylationepic-v-1-0-b5-manifest-file.csv")
+UCSC_annot <- UCSC_annot[
+  , c("IlmnID", "UCSC_RefGene_Group", "UCSC_RefGene_Accession",
+      "UCSC_RefGene_Name", "Relation_to_UCSC_CpG_Island")]
+colnames(UCSC_annot) <- c(
+  "cpg", "UCSC_RefGene_Group", "UCSC_RefGene_Accession",
+  "UCSC_RefGene_Name", "Relation_to_Island")
+UCSC_annot$cpg <- as.character(UCSC_annot$cpg)
+UCSC_annot$UCSC_RefGene_Group <- as.character(UCSC_annot$UCSC_RefGene_Group)
+UCSC_annot$UCSC_RefGene_Accession <- as.character(UCSC_annot$UCSC_RefGene_Accession)
+UCSC_annot$UCSC_RefGene_Name <- as.character(UCSC_annot$UCSC_RefGene_Name)
+UCSC_annot$Relation_to_Island <- as.character(UCSC_annot$Relation_to_Island)
+
+
+annotateCpG <- function(data){
+  
+  # add chrom and position
+  dat <- merge(
+    probes.info, data, by.x = "row.names", by.y = "cpg", sort = FALSE)
+  colnames(dat)[1] <- "cpg"
+  dat$cpg <- as.character(dat$cpg)
+  
+  # add UCSC annotation
+  dat <- merge(UCSC_annot, dat, by = "cpg", sort = FALSE)
+  
+}
+
+femCpGs_bloodmQTLs_annot <- annotateCpG(data = femCpGs_bloodmQTLs)
+write.csv(femCpGs_bloodmQTLs_annot, "femalesCpGs_bloodmQTLs_annot.csv")
+
+maleCpGs_bloodmQTLs_anoot <- annotateCpG(data = maleCpGs_bloodmQTLs)
+write.csv(maleCpGs_bloodmQTLs_anoot, "malesCpGs_bloodmQTLs_annot.csv")
+
+intCpGs_bloodmQTLs_anoot <- annotateCpG(data = intCpGs_bloodmQTLs)
+write.csv(intCpGs_bloodmQTLs_anoot, "intCpGs_bloodmQTLs_annot.csv")
+
+
+### Overlap of mQTLs with Kunkle et al GWAS results
+gwas <- read.table("../../Kunkle_etal_Stage1_results.txt", header = TRUE)
+gwas$chrPos <- paste0("chr", gwas$Chromosome, ":", gwas$Position)
+
+femCpGs_bloodmQTLs_annot$chrPos1 <- gsub(":SNP", "", femCpGs_bloodmQTLs_annot$snp)
+femCpGs_bloodmQTLs_annot$chrPos <- gsub(":INDEL", "", femCpGs_bloodmQTLs_annot$chrPos1)
+femBlood_gwas <- gwas[which(gwas$chrPos %in% femCpGs_bloodmQTLs_annot$chrPos),]
+femBlood_gwas$sig <- ifelse(femBlood_gwas$Pvalue < 5e-8, 1, 0)
+write.csv(femBlood_gwas, "femalesBlood_gwas.csv", row.names = FALSE)
+
+maleCpGs_bloodmQTLs_anoot$chrPos1 <- gsub(":SNP", "", maleCpGs_bloodmQTLs_anoot$snp)
+maleCpGs_bloodmQTLs_anoot$chrPos <- gsub(":INDEL", "", maleCpGs_bloodmQTLs_anoot$chrPos1)
+maleBlood_gwas <- gwas[which(gwas$chrPos %in% maleCpGs_bloodmQTLs_anoot$chrPos),]
+maleBlood_gwas$sig <- ifelse(maleBlood_gwas$Pvalue < 5e-8, 1, 0)
+write.csv(maleBlood_gwas, "malesBlood_gwas.csv", row.names = FALSE)
+
+intCpGs_bloodmQTLs_anoot$chrPos1 <- gsub(":SNP", "", intCpGs_bloodmQTLs_anoot$snp)
+intCpGs_bloodmQTLs_anoot$chrPos <- gsub(":INDEL", "", intCpGs_bloodmQTLs_anoot$chrPos1)
+intBlood_gwas <- gwas[which(gwas$chrPos %in% intCpGs_bloodmQTLs_anoot$chrPos),]
+intBlood_gwas$sig <- ifelse(intBlood_gwas$Pvalue < 5e-8, 1, 0)
+write.csv(intBlood_gwas, "intsBlood_gwas.csv", row.names = FALSE)
+
+
+### Overlap of mQTLs with 24 AD regions (Kunkle et al)
+library(GenomicRanges)
+
+#females
+GWASloci <- read.csv("../../AD_LDblocks.csv")
+femCpGs_bloodmQTLs_annot$Chr1 <- gsub(":.*", "", femCpGs_bloodmQTLs_annot$chrPos)
+femCpGs_bloodmQTLs_annot$Chr <- as.numeric(gsub("chr", "", femCpGs_bloodmQTLs_annot$Chr1))
+
+femCpGs_bloodmQTLs_annot$Pos <- as.numeric(gsub(".*:", "", femCpGs_bloodmQTLs_annot$chrPos))
+
+femCpGs_bloodmQTLs_annot <- femCpGs_bloodmQTLs_annot[order(femCpGs_bloodmQTLs_annot$Chr, femCpGs_bloodmQTLs_annot$Pos),]
+
+GWASloci_ranges <- GRanges(
+  seqnames = GWASloci$chr,
+  ranges = IRanges(GWASloci$start, GWASloci$end)
+)
+
+femBloodSNPs_ranges <- GRanges(
+  seqnames = femCpGs_bloodmQTLs_annot$Chr,
+  ranges = IRanges(femCpGs_bloodmQTLs_annot$Pos, femCpGs_bloodmQTLs_annot$Pos)
+)
+
+overlap <- findOverlaps(GWASloci_ranges, femBloodSNPs_ranges)
+overlap_df <- as.data.frame(overlap)
+
+GWASlociOverlap <- GWASloci[overlap_df$queryHits,]
+femBloodsnpsOverlap <- femCpGs_bloodmQTLs_annot[overlap_df$subjectHits,]
+
+GWASloci_femBloodOverlap <- cbind(GWASlociOverlap, femBloodsnpsOverlap)
+
+write.csv(GWASloci_femBloodOverlap, "GWAS_loci_femalesBlood_overlap.csv", row.names = FALSE)
+
+
+#males
+maleCpGs_bloodmQTLs_anoot$Chr1 <- gsub(":.*", "", maleCpGs_bloodmQTLs_anoot$chrPos)
+maleCpGs_bloodmQTLs_anoot$Chr <- as.numeric(gsub("chr", "", maleCpGs_bloodmQTLs_anoot$Chr1))
+
+maleCpGs_bloodmQTLs_anoot$Pos <- as.numeric(gsub(".*:", "", maleCpGs_bloodmQTLs_anoot$chrPos))
+
+maleBloodSNPs_ranges <- GRanges(
+  seqnames = maleCpGs_bloodmQTLs_anoot$Chr,
+  ranges = IRanges(maleCpGs_bloodmQTLs_anoot$Pos, maleCpGs_bloodmQTLs_anoot$Pos)
+)
+
+overlap <- findOverlaps(GWASloci_ranges, maleBloodSNPs_ranges)
+overlap_df <- as.data.frame(overlap)
+
+GWASlociOverlap <- GWASloci[overlap_df$queryHits,]
+maleBloodsnpsOverlap <- maleCpGs_bloodmQTLs_anoot[overlap_df$subjectHits,]
+
+GWASloci_maleBloodOverlap <- cbind(GWASlociOverlap, maleBloodsnpsOverlap)
+
+write.csv(GWASloci_maleBloodOverlap, "GWAS_loci_malesBlood_overlap.csv", row.names = FALSE)
+
+
+#ints
+intCpGs_bloodmQTLs_anoot$Chr1 <- gsub(":.*", "", intCpGs_bloodmQTLs_anoot$chrPos)
+intCpGs_bloodmQTLs_anoot$Chr <- as.numeric(gsub("chr", "", intCpGs_bloodmQTLs_anoot$Chr1))
+
+intCpGs_bloodmQTLs_anoot$Pos <- as.numeric(gsub(".*:", "", intCpGs_bloodmQTLs_anoot$chrPos))
+
+intBloodSNPs_ranges <- GRanges(
+  seqnames = intCpGs_bloodmQTLs_anoot$Chr,
+  ranges = IRanges(intCpGs_bloodmQTLs_anoot$Pos, intCpGs_bloodmQTLs_anoot$Pos)
+)
+
+overlap <- findOverlaps(GWASloci_ranges, intBloodSNPs_ranges)
+overlap_df <- as.data.frame(overlap)
+
+GWASlociOverlap <- GWASloci[overlap_df$queryHits,]
+intBloodsnpsOverlap <- intCpGs_bloodmQTLs_anoot[overlap_df$subjectHits,]
+
+GWASloci_intBloodOverlap <- cbind(GWASlociOverlap, intBloodsnpsOverlap)
+
+write.csv(GWASloci_intBloodOverlap, "GWAS_loci_intsBlood_overlap.csv", row.names = FALSE)
+
