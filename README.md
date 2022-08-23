@@ -66,6 +66,11 @@ This github repository includes scripts used for the analyses in the above manus
 |----------------------|-------------|
 | Methylation_Risk_scores/Methylation_risk_scores_both.Rmd        |  [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/code/Methylation_Risk_scores/Methylation_risk_scores_both.Rmd ) |
 
+### 6. Correlation and overlap with genetic susceptibility loci
+
+| File                 | Link |
+|----------------------|-------------|
+| mQTL_analysis/mQTL_analysis.R        |  [Link to the script](https://github.com/TransBioInfoLab/AD-meta-analysis-blood-by-sex/blob/main/code/mQTL_analysis/mQTL_analysis.R) |
 
 # For reproducible research
 
